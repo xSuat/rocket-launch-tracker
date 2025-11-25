@@ -1,0 +1,77 @@
+# Quick Start Guide
+
+## Installation
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Start the Expo development server:
+```bash
+npm start
+```
+
+3. Run on your device:
+   - Scan the QR code with Expo Go app (iOS/Android)
+   - Or press `i` for iOS simulator / `a` for Android emulator
+
+## Project Structure
+
+```
+rocket-launch-tracker/
+├── App.tsx                 # Main app entry point
+├── app.json                # Expo configuration
+├── package.json            # Dependencies
+├── tsconfig.json           # TypeScript configuration
+├── components/             # Reusable UI components
+│   ├── CountdownTimer.tsx
+│   ├── LaunchCard.tsx
+│   ├── LoadingState.tsx
+│   ├── EmptyState.tsx
+│   └── ErrorState.tsx
+├── screens/                # Screen components
+│   ├── UpcomingLaunchesScreen.tsx
+│   ├── HistoricalLaunchesScreen.tsx
+│   ├── FavoritesScreen.tsx
+│   └── LaunchDetailsScreen.tsx
+├── navigation/             # Navigation setup
+│   └── AppNavigator.tsx
+├── services/               # API services
+│   └── api.ts
+├── context/                # React Context for state
+│   └── AppContext.tsx
+├── types/                  # TypeScript types
+│   ├── index.ts
+│   └── navigation.ts
+├── utils/                  # Utility functions
+│   └── dateUtils.ts
+└── constants/             # Constants
+    └── colors.ts
+```
+
+## Features
+
+✅ Upcoming launches with live countdown timers
+✅ Historical launches archive
+✅ Detailed launch information
+✅ Favorites functionality
+✅ Search and filter capabilities
+✅ Offline support with caching
+✅ Pull-to-refresh
+✅ Share functionality
+✅ Modern, minimalist UI
+
+## API
+
+The app uses the Launch Library 2 API:
+- Base URL: `https://ll.thespacedevs.com/2.3.0`
+- Endpoint: `/launch/`
+
+## Notes
+
+- The app includes automatic caching (5 minutes) for offline support
+- Favorites are stored locally using AsyncStorage
+- All launch times are automatically converted to the user's timezone
+- The app supports both light and dark mode (follows system settings)
+

@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Rocket Launch Tracker",
+    "slug": "rocket-launch-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "rocket-launch-tracker",
+    "extra": {
+      "nasaApiKey": "<YOUR_NASA_API_KEY_HERE>"
+    },
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "This app needs access to your calendar to add space events."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app uses your location to show ISS pass times near you."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rocketlaunchtracker.app",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "This app needs access to your calendar to add space events.",
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to show ISS pass times near you."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "package": "com.rocketlaunchtracker.app",
+      "permissions": [
+        "WRITE_CALENDAR",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    }
+  }
+}
+
