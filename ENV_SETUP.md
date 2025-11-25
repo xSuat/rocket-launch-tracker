@@ -43,26 +43,27 @@ The app uses NASA's Near Earth Object Web Service (NeoWs) API to fetch asteroid 
    
    **Note**: You can also use `NASA_API_KEY` (without EXPO_PUBLIC_ prefix), but `EXPO_PUBLIC_NASA_API_KEY` is recommended for Expo projects.
 
-3. **Update `app.json`** to include extra config:
+3. **Update `app.json`** to include extra config (optional):
    ```json
    {
      "expo": {
        "extra": {
-         "nasaApiKey": process.env.EXPO_PUBLIC_NASA_API_KEY || "DEMO_KEY"
+         "nasaApiKey": "<YOUR_NASA_API_KEY_HERE>"
        }
      }
    }
    ```
+   
+   **Note:** For production builds, you can hardcode your API key here, but using `.env` file is recommended for security.
 
-4. **Update `services/events.ts`** to use the environment variable:
-   ```typescript
-   import Constants from 'expo-constants';
+4. **The app already uses the environment variable automatically!**
    
-   const NASA_API_KEY = Constants.expoConfig?.extra?.nasaApiKey || 'DEMO_KEY';
+   The app is already configured to use `getNasaApiKey()` from `services/config.ts`, which:
+   - Checks `process.env.EXPO_PUBLIC_NASA_API_KEY` (from .env file)
+   - Falls back to `Constants.expoConfig?.extra?.nasaApiKey` (from app.json)
+   - Uses `DEMO_KEY` as final fallback
    
-   // Then use it in the API call:
-   api_key: NASA_API_KEY,
-   ```
+   No code changes needed!
 
 #### Option 2: Using React Native Config (Alternative)
 
