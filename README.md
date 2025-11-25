@@ -13,10 +13,6 @@ A modern, minimalist mobile app for tracking rocket launches, space events, and 
 - **Modern UI** - Beautiful, minimalist interface with dark mode support
 - **Detailed Information** - Comprehensive launch details, rocket specifications, mission timelines, and more
 
-## Screenshots
-
-*Add screenshots here if available*
-
 ## Getting Started
 
 ### Prerequisites
