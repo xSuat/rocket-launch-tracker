@@ -26,7 +26,7 @@ A modern, minimalist mobile app for tracking rocket launches, space events, and 
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/rocket-launch-tracker.git
+   git clone https://github.com/xSuat/rocket-launch-tracker.git
    cd rocket-launch-tracker
    ```
 
