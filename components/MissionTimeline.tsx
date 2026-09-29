@@ -1,40 +1,10 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Launch } from '../types';
 import { generateDefaultTimeline } from '../utils/rocketUtils';
-import { formatLaunchDate } from '../utils/dateUtils';
 import { GlassCard } from './ui';
 import { Colors } from '../constants/colors';
-
-// Try to import Reanimated, but handle gracefully if it fails
-let Animated: any;
-let useAnimatedStyle: any;
-let useSharedValue: any;
-let withTiming: any;
-let withSpring: any;
-let FadeInUp: any;
-let AnimatedView: any;
-let Easing: any;
-let reanimatedAvailable = false;
-
-try {
-  const Reanimated = require('react-native-reanimated');
-  Animated = Reanimated.default;
-  useAnimatedStyle = Reanimated.useAnimatedStyle;
-  useSharedValue = Reanimated.useSharedValue;
-  withTiming = Reanimated.withTiming;
-  withSpring = Reanimated.withSpring;
-  FadeInUp = Reanimated.FadeInUp;
-  Easing = Reanimated.Easing;
-  AnimatedView = Reanimated.default.createAnimatedComponent(View);
-  reanimatedAvailable = true;
-} catch (error) {
-  if (__DEV__) console.warn('Reanimated not available, using fallback animations');
-  AnimatedView = View;
-  reanimatedAvailable = false;
-}
 
 interface TimelineEvent {
   id: string;
@@ -57,67 +27,6 @@ export const MissionTimeline = React.memo<MissionTimelineProps>(({
   const timeline = useMemo(() => {
     return timelineData || generateDefaultTimeline(launch);
   }, [timelineData, launch.id, launch.net]);
-  
-  const [itemOpacities, setItemOpacities] = useState<number[]>([]);
-  const [itemScales, setItemScales] = useState<number[]>([]);
-  const hasAnimatedRef = useRef(false);
-  const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
-
-  useEffect(() => {
-    // Only animate once per launch
-    if (hasAnimatedRef.current) return;
-    hasAnimatedRef.current = true;
-    
-    // Initialize all items as visible (will fade in if reanimated works)
-    const initialOpacities = timeline.map(() => reanimatedAvailable ? 1 : 0);
-    const initialScales = timeline.map(() => reanimatedAvailable ? 1 : 0.95);
-    setItemOpacities(initialOpacities);
-    setItemScales(initialScales);
-    
-    if (!reanimatedAvailable) {
-      // Fallback: simple fade-in and scale-up using setTimeout
-      timeline.forEach((_, i) => {
-        const timeoutId = setTimeout(() => {
-          setItemOpacities(prev => {
-            // Use functional update to avoid stale closure issues
-            const newOpacities = [...prev];
-            if (newOpacities[i] !== undefined) {
-              newOpacities[i] = 1;
-            }
-            return newOpacities;
-          });
-          setItemScales(prev => {
-            const newScales = [...prev];
-            if (newScales[i] !== undefined) {
-              newScales[i] = 1;
-            }
-            return newScales;
-          });
-        }, i * 100);
-        timeoutRefs.current.push(timeoutId);
-      });
-    }
-    
-    // Cleanup function
-    return () => {
-      timeoutRefs.current.forEach(timeoutId => clearTimeout(timeoutId));
-      timeoutRefs.current = [];
-      hasAnimatedRef.current = false;
-    };
-  }, [timeline.length, launch.id]); // Only depend on length and launch.id, not the array itself
-
-  const getIconName = (icon: string): any => {
-    const iconMap: Record<string, any> = {
-      'rocket-launch': 'rocket-launch',
-      'speedometer': 'speedometer',
-      'engine-off': 'engine-off-outline',
-      'layers': 'layers',
-      'rocket': 'rocket',
-      'package': 'package-variant',
-      'satellite': 'satellite-variant',
-    };
-    return iconMap[icon] || 'rocket-launch';
-  };
 
   const getRelativeTime = (eventTime: string): string => {
     const launchTime = new Date(launch.net);
