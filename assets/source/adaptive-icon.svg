@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="hull" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F1F5F9"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C084FC"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="fin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A855F7"/>
+      <stop offset="1" stop-color="#DB2777"/>
+    </linearGradient>
+    <linearGradient id="nozzle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#64748B"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+    <radialGradient id="window" cx="0.38" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#5B21B6"/>
+      <stop offset="1" stop-color="#1E1B4B"/>
+    </radialGradient>
+    <linearGradient id="flameOuter" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="0.45" stop-color="#F97316" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#EC4899" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="flameInner" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#FEF3C7"/>
+      <stop offset="1" stop-color="#FBBF24" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="hullClip">
+      <path d="M512 176 C557 230 608 330 608 440 L596 700 L428 700 L416 440 C416 330 467 230 512 176 Z"/>
+    </clipPath>
+  </defs>
+
+  <g transform="translate(512 512) scale(0.72) translate(-512 -512) rotate(45 512 512)">
+    <path d="M462 735 C458 800 480 870 512 935 C544 870 566 800 562 735 Z" fill="url(#flameOuter)"/>
+    <path d="M482 735 C480 780 494 830 512 870 C530 830 544 780 542 735 Z" fill="url(#flameInner)"/>
+    <path d="M456 698 L568 698 L554 745 Q512 752 470 745 Z" fill="url(#nozzle)"/>
+    <path d="M424 540 C378 574 344 616 336 672 L330 764 C356 736 392 716 432 706 Z" fill="url(#fin)"/>
+    <path d="M600 540 C646 574 680 616 688 672 L694 764 C668 736 632 716 592 706 Z" fill="url(#fin)"/>
+    <path d="M512 176 C557 230 608 330 608 440 L596 700 L428 700 L416 440 C416 330 467 230 512 176 Z" fill="url(#hull)"/>
+    <g clip-path="url(#hullClip)">
+      <rect x="400" y="170" width="224" height="128" fill="url(#accent)"/>
+      <rect x="400" y="652" width="224" height="60" fill="url(#accent)"/>
+    </g>
+    <circle cx="512" cy="440" r="62" fill="url(#accent)"/>
+    <circle cx="512" cy="440" r="46" fill="url(#window)"/>
+    <ellipse cx="494" cy="422" rx="16" ry="10" transform="rotate(-35 494 422)" fill="#FFFFFF" opacity="0.75"/>
+  </g>
+</svg>
