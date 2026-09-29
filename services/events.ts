@@ -1,13 +1,13 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchAPI } from './api';
-import { getNasaApiKey, NASA_NEO_URL, NASA_APOD_URL, ISS_NOTIFY_URL } from './config';
+import { getNasaApiKey, NASA_NEO_URL, NASA_APOD_URL } from './config';
 import { memoryCache } from './cache';
 import { DataSource } from '../types';
 
 export interface SpaceEvent {
   id: string;
-  type: 'launch' | 'asteroid' | 'iss' | 'meteor' | 'moon' | 'apod';
+  type: 'launch' | 'asteroid' | 'meteor' | 'moon' | 'apod';
   title: string;
   description?: string;
   date: string;
@@ -74,10 +74,8 @@ async function setCachedEvents(key: string, data: SpaceEvent[]): Promise<void> {
   }
 }
 
-export function getCacheKey(startDate: string, endDate: string, latitude?: number, longitude?: number): string {
-  const dateRange = `${startDate.split('T')[0]}_${endDate.split('T')[0]}`;
-  const location = latitude && longitude ? `_${latitude}_${longitude}` : '';
-  return `${dateRange}${location}`;
+export function getCacheKey(startDate: string, endDate: string): string {
+  return `${startDate.split('T')[0]}_${endDate.split('T')[0]}`;
 }
 
 // ... rest of the functions (getLaunchEvents, getAsteroidEvents, etc.)
@@ -147,7 +145,7 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
         if (response.status >= 400) return [];
         
         const nearEarthObjects = response.data?.near_earth_objects || {};
-        Object.entries(nearEarthObjects).forEach(([date, asteroids]: [string, any[]]) => {
+        Object.entries(nearEarthObjects).forEach(([date, asteroids]) => {
           if (Array.isArray(asteroids)) {
             asteroids.forEach((asteroid: any) => {
               const closeApproach = asteroid.close_approach_data?.[0];
@@ -207,7 +205,7 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
                 }).then(response => {
                     if (response.status >= 400) return;
                     const nearEarthObjects = response.data?.near_earth_objects || {};
-                    Object.entries(nearEarthObjects).forEach(([date, asteroids]: [string, any[]]) => {
+                    Object.entries(nearEarthObjects).forEach(([date, asteroids]) => {
                         if (Array.isArray(asteroids)) {
                             asteroids.forEach((asteroid: any) => {
                                 const closeApproach = asteroid.close_approach_data?.[0];
@@ -344,49 +342,6 @@ export async function getAPODEvents(startDate: string, endDate: string): Promise
   } catch { return []; }
 }
 
-// ISS
-export async function getISSEvents(startDate: string, endDate: string, locationName?: string, latitude?: number, longitude?: number): Promise<SpaceEvent[]> {
-    if (!latitude || !longitude) return [];
-    try {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        const numPasses = Math.min(100, Math.max(10, daysDiff * 4));
-
-        const response = await axios.get(ISS_NOTIFY_URL, {
-            params: { lat: latitude.toString(), lon: longitude.toString(), alt: '0', n: numPasses.toString() },
-            timeout: 6000,
-            validateStatus: s => s < 500
-        });
-
-        if (response.status >= 400) return [];
-        const events: SpaceEvent[] = [];
-
-        if (response.data?.response) {
-            response.data.response.forEach((pass: any) => {
-                const passTime = new Date(pass.risetime * 1000);
-                if (passTime >= start && passTime <= end) {
-                     events.push({
-                        id: `iss-${pass.risetime}`,
-                        type: 'iss' as const,
-                        title: 'ISS Visible',
-                        description: `ISS pass visible for ${Math.round(pass.duration / 60)} minutes`,
-                        date: passTime.toISOString(),
-                        startDate: passTime.toISOString(),
-                        endDate: new Date(pass.risetime * 1000 + pass.duration * 1000).toISOString(),
-                        locationName: locationName || 'Your Location',
-                        url: 'https://spotthestation.nasa.gov/',
-                        icon: 'satellite-variant',
-                        color: '#00D4FF',
-                        source: 'ISS_API' as const,
-                     });
-                }
-            });
-        }
-        return events;
-    } catch { return []; }
-}
-
 // Meteor Showers
 export async function getMeteorShowerEvents(startDate: string, endDate: string): Promise<SpaceEvent[]> {
     const knownShowers = [
@@ -428,12 +383,9 @@ export async function getMeteorShowerEvents(startDate: string, endDate: string):
 export async function getAllEvents(
   startDate: string,
   endDate: string,
-  locationName?: string,
-  latitude?: number,
-  longitude?: number,
   useCache: boolean = true
 ): Promise<SpaceEvent[]> {
-    const cacheKey = getCacheKey(startDate, endDate, latitude, longitude);
+    const cacheKey = getCacheKey(startDate, endDate);
     if (useCache) {
         const cached = await getCachedEvents(cacheKey);
         if (cached) return cached;
@@ -442,7 +394,6 @@ export async function getAllEvents(
     const results = await Promise.allSettled([
       getLaunchEvents(startDate, endDate),
       getAsteroidEvents(startDate, endDate),
-      getISSEvents(startDate, endDate, locationName, latitude, longitude),
       getMeteorShowerEvents(startDate, endDate),
       getMoonPhaseEvents(startDate, endDate),
       getAPODEvents(startDate, endDate),
@@ -458,24 +409,13 @@ export async function getAllEvents(
     return sorted;
 }
 
-export async function getEventsForDay(
-  date: Date,
-  locationName?: string,
-  latitude?: number,
-  longitude?: number
-): Promise<SpaceEvent[]> {
+export async function getEventsForDay(date: Date): Promise<SpaceEvent[]> {
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date);
   endOfDay.setHours(23, 59, 59, 999);
   
-  const allEvents = await getAllEvents(
-    startOfDay.toISOString(),
-    endOfDay.toISOString(),
-    locationName,
-    latitude,
-    longitude
-  );
+  const allEvents = await getAllEvents(startOfDay.toISOString(), endOfDay.toISOString());
   
   return allEvents.filter((event) => {
     const eventDate = new Date(event.date);

@@ -22,12 +22,6 @@
         {
           "calendarPermission": "This app needs access to your calendar to add space events."
         }
-      ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "This app uses your location to show ISS pass times near you."
-        }
       ]
     ],
     "ios": {
@@ -38,7 +32,6 @@
       },
       "infoPlist": {
         "NSCalendarsUsageDescription": "This app needs access to your calendar to add space events.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to show ISS pass times near you.",
         "LSApplicationQueriesSchemes": [
           "waze"
         ]
@@ -51,9 +44,7 @@
       },
       "package": "com.rocketlaunchtracker.app",
       "permissions": [
-        "WRITE_CALENDAR",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "WRITE_CALENDAR"
       ]
     },
     "web": {

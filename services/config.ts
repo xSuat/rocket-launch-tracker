@@ -9,9 +9,6 @@ export const NASA_BASE_URL = 'https://api.nasa.gov';
 export const NASA_NEO_URL = `${NASA_BASE_URL}/neo/rest/v1/feed`;
 export const NASA_APOD_URL = `${NASA_BASE_URL}/planetary/apod`;
 
-// ISS APIs
-export const ISS_NOTIFY_URL = 'https://api.open-notify.org/iss-pass.json';
-
 // Get API Environment
 // First checks AsyncStorage for user preference, then falls back to env variable
 // If not set, defaults to 'dev' (safer for development to avoid using prod quota)

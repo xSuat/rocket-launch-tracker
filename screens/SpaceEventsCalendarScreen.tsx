@@ -11,7 +11,6 @@ import {
   ScrollView,
   Alert,
   Linking,
-  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -23,7 +22,6 @@ import { useEvents } from '../hooks';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import { EmptyState } from '../components/EmptyState';
-import { useApp } from '../context/AppContext';
 import { PageHeader, StatCard, GlassCard, GradientButton } from '../components/ui';
 import { DataSourceLabel } from '../components';
 import { Colors } from '../constants/colors';
@@ -31,7 +29,6 @@ import { getMeteorShowerDetails } from '../utils/meteorShowerUtils';
 
 export const SpaceEventsCalendarScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { currentLocation } = useApp();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<SpaceEvent | null>(null);
   const [eventDetailsVisible, setEventDetailsVisible] = useState(false);
@@ -40,7 +37,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
     launch: true,
     meteor: true,
     asteroid: true,
-    iss: true,
     moon: true,
   });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -59,11 +55,10 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
 
   const events = useMemo(() => {
     return allEvents.filter(event => {
-      if (event.type === 'apod' || event.type === 'epic') return false;
+      if (event.type === 'apod') return false;
       if (event.type === 'launch' && !eventTypeFilters.launch) return false;
       if (event.type === 'meteor' && !eventTypeFilters.meteor) return false;
       if (event.type === 'asteroid' && !eventTypeFilters.asteroid) return false;
-      if (event.type === 'iss' && !eventTypeFilters.iss) return false;
       if (event.type === 'moon' && !eventTypeFilters.moon) return false;
       return true;
     });
@@ -131,7 +126,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
       case 'launch': return '#4A9EFF'; // blue
       case 'meteor':
       case 'asteroid': return Colors.primary; // purple (astronomy)
-      case 'iss': return '#10B981'; // green
       case 'moon': return '#C0C0C0'; // silver
       case 'apod': return '#FF6B6B'; // red
       case 'epic': return '#4ECDC4'; // teal
@@ -144,7 +138,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
       case 'launch': return 'rocket-launch';
       case 'meteor': return 'meteor';
       case 'asteroid': return 'star';
-      case 'iss': return 'satellite-variant';
       case 'moon': return 'moon-full';
       case 'apod': return 'image-outline';
       case 'epic': return 'earth';
@@ -158,7 +151,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
       case 'launch': return 'Launch';
       case 'meteor': return 'Meteor Shower';
       case 'asteroid': return 'Astronomy';
-      case 'iss': return 'ISS';
       case 'moon': return 'Moon Phase';
       case 'apod': return 'APOD';
       case 'epic': return 'Earth View';
@@ -248,72 +240,50 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
     return null;
   };
 
-  // Handle adding event to calendar
+  // Opens the system "New Event" sheet. On iOS 17+ this needs no calendar
+  // permission; older iOS versions require access before the sheet can open.
   const handleAddToCalendar = async (event: SpaceEvent) => {
     if (addingToCalendar) return;
-    
-    InteractionManager.runAfterInteractions(async () => {
-      try {
-        setAddingToCalendar(true);
-        
+    setAddingToCalendar(true);
+
+    try {
+      if (Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) < 17) {
         const { status } = await Calendar.requestCalendarPermissionsAsync();
-        
         if (status !== 'granted') {
           Alert.alert(
-            'Permission Required',
-            'Calendar access is required to add events. Please enable it in Settings.',
+            'Calendar Access Needed',
+            'Allow calendar access in Settings to add events to your calendar.',
             [
               { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openSettings() }
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
             ]
           );
-          setAddingToCalendar(false);
           return;
         }
-
-        await new Promise(resolve => setTimeout(resolve, 0));
-        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-        const defaultCalendar = calendars.find(cal => cal.allowsModifications) || calendars[0];
-
-        if (!defaultCalendar) {
-          Alert.alert('Error', 'No writable calendar found. Please ensure you have at least one calendar that allows modifications.');
-          setAddingToCalendar(false);
-          return;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 0));
-        const startDate = event.startDate ? new Date(event.startDate) : new Date(event.date);
-        const endDate = event.endDate 
-          ? new Date(event.endDate) 
-          : new Date(startDate.getTime() + 60 * 60 * 1000); // Default 1 hour
-
-        const eventId = await Calendar.createEventAsync(defaultCalendar.id, {
-          title: event.title,
-          startDate,
-          endDate,
-          location: event.locationName,
-          notes: `${event.description || ''}\n\n${event.url || ''}`.trim(),
-          timeZone: 'UTC',
-        });
-
-        Alert.alert('Success', 'Event added to your calendar!', [
-          {
-            text: 'OK',
-            onPress: () => {
-              setEventDetailsVisible(false);
-              setSelectedEvent(null);
-            },
-          },
-        ]);
-      } catch (err: any) {
-        Alert.alert(
-          'Error',
-          err.message || 'Failed to add event to calendar. Please check your calendar permissions and try again.'
-        );
-      } finally {
-        setAddingToCalendar(false);
       }
-    });
+
+      const startDate = event.startDate ? new Date(event.startDate) : new Date(event.date);
+      const endDate = event.endDate
+        ? new Date(event.endDate)
+        : new Date(startDate.getTime() + 60 * 60 * 1000);
+
+      const result = await Calendar.createEventInCalendarAsync({
+        title: event.title,
+        startDate,
+        endDate,
+        location: event.locationName,
+        notes: `${event.description || ''}\n\n${event.url || ''}`.trim(),
+      });
+
+      if (result.action === 'saved') {
+        setEventDetailsVisible(false);
+        setSelectedEvent(null);
+      }
+    } catch {
+      Alert.alert('Could Not Add Event', 'The event could not be added to your calendar. Please try again.');
+    } finally {
+      setAddingToCalendar(false);
+    }
   };
 
   // Calculate stats
@@ -327,7 +297,7 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
       return eventDate >= startOfMonth && eventDate <= endOfMonth;
     }).length;
     
-    const visible = events.filter(e => e.type === 'iss' || e.type === 'meteor' || e.type === 'asteroid' || e.type === 'moon').length;
+    const visible = events.filter(e => e.type === 'meteor' || e.type === 'asteroid' || e.type === 'moon').length;
     const launches = events.filter(e => e.type === 'launch').length;
     
     return {
@@ -399,7 +369,7 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
       {/* Content */}
       {loading ? (
         <View style={[styles.loadingContainer, { paddingTop: topSectionHeight + 24 }]}>
-          <LoadingState message="Loading space events..." transparent alignTop />
+          <LoadingState message="Loading space events..." />
         </View>
       ) : eventsByDate.length === 0 ? (
         <ScrollView 
@@ -521,7 +491,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
                 { key: 'launch', label: 'Launches', color: '#4A9EFF', icon: 'rocket-launch' },
                 { key: 'meteor', label: 'Meteor Showers', color: Colors.primary, icon: 'meteor' },
                 { key: 'asteroid', label: 'Asteroids', color: Colors.primary, icon: 'star' },
-                { key: 'iss', label: 'ISS Passes', color: '#10B981', icon: 'satellite-variant' },
                 { key: 'moon', label: 'Moon Phases', color: '#C0C0C0', icon: 'moon-full' },
               ].map(({ key, label, color, icon }) => (
                 <TouchableOpacity
@@ -564,7 +533,6 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
                     launch: true,
                     meteor: true,
                     asteroid: true,
-                    iss: true,
                     moon: true,
                   });
                 }}
@@ -690,22 +658,14 @@ export const SpaceEventsCalendarScreen: React.FC = () => {
                     </View>
                   </View>
 
-                  {/* Visibility/Location */}
-                  {(selectedEvent.locationName || selectedEvent.type === 'iss') && (
+                  {selectedEvent.locationName && (
                     <View style={styles.modalInfoRow}>
                       <View style={styles.modalInfoIcon}>
                         <MaterialIcons name="place" size={20} color={Colors.text} />
                       </View>
                       <View style={styles.modalInfoText}>
-                        <Text style={styles.modalInfoLabel}>
-                          {selectedEvent.type === 'iss' ? 'Visibility' : 'Location'}
-                        </Text>
-                        <Text style={styles.modalInfoValue}>
-                          {selectedEvent.type === 'iss'
-                            ? `${selectedEvent.locationName || 'Current Location'} - Excellent`
-                            : selectedEvent.locationName
-                          }
-                        </Text>
+                        <Text style={styles.modalInfoLabel}>Location</Text>
+                        <Text style={styles.modalInfoValue}>{selectedEvent.locationName}</Text>
                       </View>
                     </View>
                   )}

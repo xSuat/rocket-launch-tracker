@@ -35,7 +35,7 @@ export const useEvents = (startDate: string, endDate: string) => {
     setError(null);
 
     try {
-      const data = await getAllEvents(startDate, endDate, undefined, undefined, undefined, !refresh);
+      const data = await getAllEvents(startDate, endDate, !refresh);
       setEvents(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch events');

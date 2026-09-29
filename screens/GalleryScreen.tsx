@@ -50,9 +50,6 @@ export const GalleryScreen: React.FC = () => {
       const allEvents = await getAllEvents(
         monthStart.toISOString(),
         monthEnd.toISOString(),
-        undefined,
-        undefined,
-        undefined,
         useCache
       );
 
@@ -117,7 +114,7 @@ export const GalleryScreen: React.FC = () => {
 
       {loading && !refreshing ? (
         <View style={[styles.loadingContainer, { paddingTop: headerHeight + 24 }]}>
-          <LoadingState message="Loading space images..." transparent alignTop />
+          <LoadingState message="Loading space images..." />
         </View>
       ) : (
         <ScrollView

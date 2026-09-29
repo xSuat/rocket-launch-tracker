@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Launch } from '../types';
 import { getFollowedProviders, followProvider, unfollowProvider, isProviderFollowed } from '../lib/notify';
-import { startLocationTracking, stopLocationTracking, LocationSubscription } from '../utils/locationUtils';
-import { getApiEnv } from '../services/config';
+import { getApiEnvSync } from '../services/config';
 
 interface FollowedProvider {
   providerId: string;
@@ -27,11 +26,6 @@ interface AppContextType {
   loadFollowedProviders: () => Promise<void>;
   toggleProviderFollow: (providerId: string, providerName: string) => Promise<void>;
   isProviderFollowed: (providerId: string) => boolean;
-  // Location tracking
-  locationTrackingEnabled: boolean;
-  setLocationTrackingEnabled: (enabled: boolean) => Promise<void>;
-  currentLocation: { latitude: number; longitude: number } | null;
-  currentLocationName: string | null;
   // Data source labels
   showDataSourceLabels: boolean;
   setShowDataSourceLabels: (enabled: boolean) => Promise<void>;
@@ -41,7 +35,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const FAVORITES_KEY = 'favorite_launches';
 const DEFAULT_MAP_APP_KEY = 'default_map_app';
-const LOCATION_TRACKING_ENABLED_KEY = 'location_tracking_enabled';
 const SHOW_DATA_SOURCE_LABELS_KEY = 'show_data_source_labels';
 const API_ENVIRONMENT_KEY = 'api_environment';
 
@@ -49,13 +42,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoriteLaunches, setFavoriteLaunches] = useState<Launch[]>([]);
   const [defaultMapApp, setDefaultMapAppState] = useState<string | null>(null);
-  const [apiEnvironment, setApiEnvironmentState] = useState<'dev' | 'prod'>(getApiEnv());
+  const [apiEnvironment, setApiEnvironmentState] = useState<'dev' | 'prod'>(getApiEnvSync());
   const [followedProviders, setFollowedProviders] = useState<FollowedProvider[]>([]);
-  const [locationTrackingEnabled, setLocationTrackingEnabledState] = useState<boolean>(true);
   const [showDataSourceLabels, setShowDataSourceLabelsState] = useState<boolean>(false);
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [currentLocationName, setCurrentLocationName] = useState<string | null>(null);
-  const locationSubscriptionRef = useRef<LocationSubscription | null>(null);
 
   useEffect(() => {
     loadFavorites();
@@ -101,17 +90,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loadSettings = async () => {
     try {
-      const [mapApp, locationTracking, dataSourceLabels, apiEnv] = await Promise.all([
+      const [mapApp, dataSourceLabels, apiEnv] = await Promise.all([
         AsyncStorage.getItem(DEFAULT_MAP_APP_KEY),
-        AsyncStorage.getItem(LOCATION_TRACKING_ENABLED_KEY),
         AsyncStorage.getItem(SHOW_DATA_SOURCE_LABELS_KEY),
         AsyncStorage.getItem(API_ENVIRONMENT_KEY),
       ]);
       if (mapApp) {
         setDefaultMapAppState(mapApp);
-      }
-      if (locationTracking !== null) {
-        setLocationTrackingEnabledState(locationTracking === 'true');
       }
       if (dataSourceLabels !== null) {
         setShowDataSourceLabelsState(dataSourceLabels === 'true');
@@ -167,15 +152,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return followedProviders.some((p) => p.providerId === providerId);
   };
 
-  const setLocationTrackingEnabled = async (enabled: boolean) => {
-    try {
-      await AsyncStorage.setItem(LOCATION_TRACKING_ENABLED_KEY, String(enabled));
-      setLocationTrackingEnabledState(enabled);
-    } catch (error) {
-      console.error('Error saving location tracking setting:', error);
-    }
-  };
-
   const setShowDataSourceLabels = async (enabled: boolean) => {
     try {
       await AsyncStorage.setItem(SHOW_DATA_SOURCE_LABELS_KEY, String(enabled));
@@ -198,43 +174,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Start/stop location tracking based on setting
-  useEffect(() => {
-    const manageLocationTracking = async () => {
-      // Stop existing tracking
-      if (locationSubscriptionRef.current) {
-        stopLocationTracking(locationSubscriptionRef.current);
-        locationSubscriptionRef.current = null;
-      }
-
-      // Start tracking if enabled
-      if (locationTrackingEnabled) {
-        const subscription = await startLocationTracking((location) => {
-          setCurrentLocation({
-            latitude: location.latitude,
-            longitude: location.longitude,
-          });
-          setCurrentLocationName(location.locationName);
-        });
-        locationSubscriptionRef.current = subscription;
-      } else {
-        // Clear location when tracking is disabled
-        setCurrentLocation(null);
-        setCurrentLocationName(null);
-      }
-    };
-
-    manageLocationTracking();
-
-    // Cleanup on unmount
-    return () => {
-      if (locationSubscriptionRef.current) {
-        stopLocationTracking(locationSubscriptionRef.current);
-        locationSubscriptionRef.current = null;
-      }
-    };
-  }, [locationTrackingEnabled]);
-
   return (
     <AppContext.Provider
       value={{
@@ -251,10 +190,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loadFollowedProviders,
         toggleProviderFollow,
         isProviderFollowed: isProviderFollowedContext,
-        locationTrackingEnabled,
-        setLocationTrackingEnabled,
-        currentLocation,
-        currentLocationName,
         showDataSourceLabels,
         setShowDataSourceLabels,
         setApiEnvironment,

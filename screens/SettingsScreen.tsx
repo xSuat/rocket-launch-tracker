@@ -109,8 +109,6 @@ export const SettingsScreen: React.FC = () => {
     setDefaultMapApp,
     apiEnvironment,
     setApiEnvironment,
-    locationTrackingEnabled,
-    setLocationTrackingEnabled,
     showDataSourceLabels,
     setShowDataSourceLabels,
   } = useApp();
@@ -266,30 +264,6 @@ export const SettingsScreen: React.FC = () => {
           </SettingSection>
 
           <SettingSection
-            title="Location Tracking"
-            description="Track your location in real-time for accurate ISS pass times"
-            icon="map-marker"
-          >
-            <SettingOption
-              title={locationTrackingEnabled ? 'Enabled' : 'Disabled'}
-              subtitle={locationTrackingEnabled
-                ? 'Location is being tracked in real-time'
-                : 'Location tracking is disabled'}
-              icon={locationTrackingEnabled ? 'map-marker' : 'map-marker-off'}
-              selected={locationTrackingEnabled}
-              rightComponent={
-                <Switch
-                  value={locationTrackingEnabled}
-                  onValueChange={setLocationTrackingEnabled}
-                  trackColor={{ false: Colors.borderSolid, true: Colors.primary }}
-                  thumbColor={locationTrackingEnabled ? Colors.text : Colors.textMuted}
-                />
-              }
-              showCheckmark={false}
-            />
-          </SettingSection>
-
-          <SettingSection
             title="Data Source Labels"
             description="Show which API each item comes from"
             icon="label"
@@ -389,7 +363,6 @@ export const SettingsScreen: React.FC = () => {
               {[
                 { name: 'Launch Library 2', url: 'll.thespacedevs.com', icon: 'rocket-launch', description: 'Rocket launch data, schedules, and mission details' },
                 { name: 'NASA NeoWs', url: 'api.nasa.gov', icon: 'star', description: 'Near Earth Object data and asteroid close approaches' },
-                { name: 'Open Notify', url: 'api.open-notify.org', icon: 'satellite-variant', description: 'ISS pass predictions and space station data' },
                 { name: 'SpaceX API', url: 'api.spacexdata.com', icon: 'rocket', description: 'SpaceX rocket specifications and mission data' },
               ].map((api, index) => (
                 <View key={index} style={styles.apiCard}>

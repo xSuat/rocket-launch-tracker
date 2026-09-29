@@ -68,7 +68,7 @@ export interface Mission {
   agencies?: Agency[];
 }
 
-export type DataSource = "LL2" | "NASA_NeoWs" | "NASA_APOD" | "ISS_API" | "Other";
+export type DataSource = "LL2" | "NASA_NeoWs" | "NASA_APOD" | "Other";
 
 export interface Launch {
   id: string;

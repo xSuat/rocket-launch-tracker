@@ -19,8 +19,6 @@ const getSourceDisplayName = (source?: DataSource, apiEnvironment?: 'dev' | 'pro
       return 'NASA NeoWs';
     case 'NASA_APOD':
       return 'NASA APOD';
-    case 'ISS_API':
-      return 'ISS API';
     case 'Other':
       return 'Other';
     default:
