@@ -18,15 +18,19 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { RootStackParamList } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { getAvailableMapApps, MAP_APPS } from '../utils/mapUtils';
+import { memoryCache } from '../services/cache';
 import { PageHeader, GlassCard } from '../components';
 import { Colors } from '../constants/colors';
 
-type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
+const PRIVACY_POLICY_URL = 'https://xsuat.github.io/rocket-launch-tracker/privacy-policy.html';
+const SUPPORT_URL = 'https://xsuat.github.io/rocket-launch-tracker/support.html';
+const APP_VERSION = Application.nativeApplicationVersion || Constants.expoConfig?.version || '1.0.0';
 
-const APP_VERSION = '1.0.0';
+type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
 interface SettingSectionProps {
   title: string;
@@ -153,12 +157,13 @@ export const SettingsScreen: React.FC = () => {
             try {
               const AsyncStorage = require('@react-native-async-storage/async-storage').default;
               const keys = await AsyncStorage.getAllKeys();
-              const cacheKeys = keys.filter(key => 
-                key.startsWith('launch_cache_') || 
-                key.startsWith('events_cache_') || 
+              const cacheKeys = keys.filter((key: string) =>
+                key.startsWith('launch_cache_') ||
+                key.startsWith('events_cache_') ||
                 key.startsWith('filter_options_')
               );
               await AsyncStorage.multiRemove(cacheKeys);
+              memoryCache.clear();
               Alert.alert('Success', 'Cache cleared successfully');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear cache');
@@ -263,57 +268,60 @@ export const SettingsScreen: React.FC = () => {
             )}
           </SettingSection>
 
-          <SettingSection
-            title="Data Source Labels"
-            description="Show which API each item comes from"
-            icon="label"
-          >
-            <SettingOption
-              title={showDataSourceLabels ? 'Enabled' : 'Disabled'}
-              subtitle={showDataSourceLabels
-                ? 'Data source labels are visible'
-                : 'Data source labels are hidden'}
-              icon={showDataSourceLabels ? 'label' : 'label-outline'}
-              selected={showDataSourceLabels}
-              rightComponent={
-                <Switch
-                  value={showDataSourceLabels}
-                  onValueChange={setShowDataSourceLabels}
-                  trackColor={{ false: Colors.borderSolid, true: Colors.primary }}
-                  thumbColor={showDataSourceLabels ? Colors.text : Colors.textMuted}
-                />
-              }
-              showCheckmark={false}
-            />
-          </SettingSection>
+          {__DEV__ && (
+            <SettingSection
+              title="Data Source Labels"
+              description="Show which API each item comes from"
+              icon="label"
+            >
+              <SettingOption
+                title={showDataSourceLabels ? 'Enabled' : 'Disabled'}
+                subtitle={showDataSourceLabels
+                  ? 'Data source labels are visible'
+                  : 'Data source labels are hidden'}
+                icon={showDataSourceLabels ? 'label' : 'label-outline'}
+                selected={showDataSourceLabels}
+                rightComponent={
+                  <Switch
+                    value={showDataSourceLabels}
+                    onValueChange={setShowDataSourceLabels}
+                    trackColor={{ false: Colors.borderSolid, true: Colors.primary }}
+                    thumbColor={showDataSourceLabels ? Colors.text : Colors.textMuted}
+                  />
+                }
+                showCheckmark={false}
+              />
+            </SettingSection>
+          )}
         </GlassCard>
 
-        {/* Advanced Category */}
         <GlassCard style={styles.categoryCard}>
           <Text style={styles.categoryTitle}>Advanced</Text>
-          
-          <SettingSection
-            title="API Environment"
-            description={`Currently using ${apiEnvironment === 'dev' ? 'development' : 'production'} API`}
-            icon="cog"
-          >
-            <View style={styles.optionsContainer}>
-              <SettingOption
-                title="Development"
-                subtitle="lldev.thespacedevs.com"
-                icon="wrench"
-                selected={apiEnvironment === 'dev'}
-                onPress={() => setApiEnvironment('dev')}
-              />
-              <SettingOption
-                title="Production"
-                subtitle="ll.thespacedevs.com"
-                icon="rocket-launch"
-                selected={apiEnvironment === 'prod'}
-                onPress={() => setApiEnvironment('prod')}
-              />
-            </View>
-          </SettingSection>
+
+          {__DEV__ && (
+            <SettingSection
+              title="API Environment"
+              description={`Currently using ${apiEnvironment === 'dev' ? 'development' : 'production'} API`}
+              icon="cog"
+            >
+              <View style={styles.optionsContainer}>
+                <SettingOption
+                  title="Development"
+                  subtitle="lldev.thespacedevs.com"
+                  icon="wrench"
+                  selected={apiEnvironment === 'dev'}
+                  onPress={() => setApiEnvironment('dev')}
+                />
+                <SettingOption
+                  title="Production"
+                  subtitle="ll.thespacedevs.com"
+                  icon="rocket-launch"
+                  selected={apiEnvironment === 'prod'}
+                  onPress={() => setApiEnvironment('prod')}
+                />
+              </View>
+            </SettingSection>
+          )}
 
           <SettingSection
             title="Data Management"
@@ -337,7 +345,7 @@ export const SettingsScreen: React.FC = () => {
           
           <SettingSection
             title="App Information"
-            description="Version and build details"
+            description="Version and policies"
             icon="information"
           >
             <View style={styles.infoContainer}>
@@ -345,27 +353,41 @@ export const SettingsScreen: React.FC = () => {
                 <Text style={styles.infoLabel}>Version</Text>
                 <Text style={styles.infoValue}>{APP_VERSION}</Text>
               </View>
-              {Constants.expoConfig?.version && (
+              {Application.nativeBuildVersion ? (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Build</Text>
-                  <Text style={styles.infoValue}>{Constants.expoConfig.version}</Text>
+                  <Text style={styles.infoValue}>{Application.nativeBuildVersion}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
+            <SettingOption
+              title="Privacy Policy"
+              subtitle="What leaves this device"
+              icon="shield-account"
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+              showCheckmark={false}
+            />
+            <SettingOption
+              title="Support"
+              subtitle="Help and contact"
+              icon="help-circle"
+              onPress={() => Linking.openURL(SUPPORT_URL)}
+              showCheckmark={false}
+            />
           </SettingSection>
 
           <SettingSection
             title="Data Sources"
-            description="APIs and services used by this app"
+            description="Public data this app requests"
             icon="api"
           >
             <View style={styles.apiListContainer}>
               {[
-                { name: 'Launch Library 2', url: 'll.thespacedevs.com', icon: 'rocket-launch', description: 'Rocket launch data, schedules, and mission details' },
-                { name: 'NASA NeoWs', url: 'api.nasa.gov', icon: 'star', description: 'Near Earth Object data and asteroid close approaches' },
-                { name: 'SpaceX API', url: 'api.spacexdata.com', icon: 'rocket', description: 'SpaceX rocket specifications and mission data' },
-              ].map((api, index) => (
-                <View key={index} style={styles.apiCard}>
+                { name: 'Launch Library 2', url: 'll.thespacedevs.com', icon: 'rocket-launch', description: 'Launch schedules from The Space Devs' },
+                { name: 'NASA NeoWs', url: 'api.nasa.gov', icon: 'star', description: 'Asteroid close approaches' },
+                { name: 'NASA APOD', url: 'api.nasa.gov', icon: 'image', description: 'Astronomy Picture of the Day' },
+              ].map((api) => (
+                <View key={api.name} style={styles.apiCard}>
                   <View style={styles.apiCardHeader}>
                     <MaterialCommunityIcons name={api.icon as any} size={18} color={Colors.primary} />
                     <Text style={styles.apiCardTitle}>{api.name}</Text>
@@ -375,6 +397,9 @@ export const SettingsScreen: React.FC = () => {
                 </View>
               ))}
             </View>
+            <Text style={styles.disclaimer}>
+              Rocket Launch Tracker is not affiliated with, endorsed by, or sponsored by NASA or any launch provider. NASA images and data are used under NASA's public API terms.
+            </Text>
           </SettingSection>
         </GlassCard>
 
@@ -599,6 +624,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     marginLeft: 26,
+  },
+  disclaimer: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
   },
   footer: {
     height: 20,
