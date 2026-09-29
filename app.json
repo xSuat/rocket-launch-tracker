@@ -4,19 +4,19 @@
     "slug": "rocket-launch-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
     "scheme": "rocket-launch-tracker",
-    "extra": {
-      "nasaApiKey": "<YOUR_NASA_API_KEY_HERE>"
-    },
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0F172A"
+        }
+      ],
       [
         "expo-calendar",
         {
@@ -31,16 +31,23 @@
       ]
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.rocketlaunchtracker.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "NSCalendarsUsageDescription": "This app needs access to your calendar to add space events.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to show ISS pass times near you."
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to show ISS pass times near you.",
+        "LSApplicationQueriesSchemes": [
+          "waze"
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#000000"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
       },
       "package": "com.rocketlaunchtracker.app",
       "permissions": [
@@ -48,7 +55,9 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }
-
