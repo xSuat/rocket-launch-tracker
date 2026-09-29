@@ -15,11 +15,8 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Launch } from '../types';
 import { TabScreenNavigationProp } from '../types/navigation';
-import { launchAPI } from '../services/api';
 import { getReminders, cancelReminder, ReminderData, getFollowedProviders, unfollowProvider, FollowedProvider } from '../lib/notify';
-import { LaunchCard } from '../components/LaunchCard';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { GlassCard } from '../components';
@@ -28,14 +25,10 @@ import { formatLaunchDate } from '../utils/dateUtils';
 
 type NavigationProp = TabScreenNavigationProp<'Notifications'>;
 
-interface ReminderWithLaunch extends ReminderData {
-  launch?: Launch;
-}
-
 export const NotificationsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
-  const [reminders, setReminders] = useState<ReminderWithLaunch[]>([]);
+  const [reminders, setReminders] = useState<ReminderData[]>([]);
   const [followedProviders, setFollowedProviders] = useState<FollowedProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,22 +38,7 @@ export const NotificationsScreen: React.FC = () => {
       if (showLoading) {
         setLoading(true);
       }
-      // Load reminders
-      const reminderData = await getReminders();
-      
-      // Load launch details for each reminder
-      const remindersWithLaunches: ReminderWithLaunch[] = [];
-      for (const reminder of reminderData) {
-        try {
-          const launch = await launchAPI.getLaunchById(reminder.launchId);
-          remindersWithLaunches.push({ ...reminder, launch });
-        } catch (error) {
-          // Launch might not exist anymore, but keep the reminder
-          remindersWithLaunches.push(reminder);
-        }
-      }
-      
-      setReminders(remindersWithLaunches);
+      setReminders(await getReminders());
       
       // Load followed providers
       const providers = await getFollowedProviders();
@@ -96,7 +74,7 @@ export const NotificationsScreen: React.FC = () => {
     navigation.navigate('LaunchDetails', { launchId });
   };
 
-  const handleCancelReminder = async (reminder: ReminderWithLaunch) => {
+  const handleCancelReminder = async (reminder: ReminderData) => {
     Alert.alert(
       'Cancel Reminder',
       `Cancel reminder for ${reminder.launchName}?`,
@@ -153,7 +131,7 @@ export const NotificationsScreen: React.FC = () => {
   if (!hasAnyNotifications) {
     return (
       <LinearGradient
-        colors={Colors.backgroundGradient}
+        colors={Colors.backgroundGradient as any}
         style={styles.container}
       >
         {/* Fixed Blur Header Background */}
@@ -189,14 +167,14 @@ export const NotificationsScreen: React.FC = () => {
     );
   }
 
-  const allItems: Array<{ type: 'reminder' | 'provider'; data: ReminderWithLaunch | FollowedProvider }> = [
+  const allItems: Array<{ type: 'reminder' | 'provider'; data: ReminderData | FollowedProvider }> = [
     ...reminders.map(r => ({ type: 'reminder' as const, data: r })),
     ...followedProviders.map(p => ({ type: 'provider' as const, data: p })),
   ];
 
   return (
     <LinearGradient
-      colors={Colors.backgroundGradient}
+      colors={Colors.backgroundGradient as any}
       style={styles.container}
     >
       {/* Fixed Blur Header Background */}
@@ -231,8 +209,8 @@ export const NotificationsScreen: React.FC = () => {
               <View style={styles.noteText}>
                 <Text style={styles.noteTitle}>About Notifications</Text>
                 <Text style={styles.noteMessage}>
-                  Set reminders for specific launches to receive real push notifications before launch time. 
-                  Following providers saves your preferences but doesn't automatically send notifications.
+                  Reminders are notifications on this device, set for a launch you choose.
+                  Following a provider only saves that preference on this device.
                 </Text>
               </View>
             </View>
@@ -240,57 +218,28 @@ export const NotificationsScreen: React.FC = () => {
         }
         renderItem={({ item }) => {
           if (item.type === 'reminder') {
-            const reminder = item.data as ReminderWithLaunch;
+            const reminder = item.data as ReminderData;
             const reminderTime = new Date(reminder.scheduledTime);
-            const now = new Date();
-            const isPast = reminderTime < now;
 
-            if (reminder.launch) {
-              return (
-                <View style={styles.reminderCard}>
-                  <LaunchCard
-                    launch={reminder.launch}
-                    onPress={() => handleLaunchPress(reminder.launchId)}
-                    showCountdown={!isPast}
-                  />
-                  <View style={styles.reminderActions}>
-                    <View style={styles.reminderInfo}>
-                      <MaterialIcons name="notifications" size={16} color={Colors.primary} />
-                      <Text style={styles.reminderInfoText}>
-                        Reminder: {formatLaunchDate(reminderTime.toISOString())}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={() => handleCancelReminder(reminder)}
-                    >
-                      <MaterialIcons name="close" size={18} color={Colors.textSecondary} />
-                    </TouchableOpacity>
+            return (
+              <GlassCard style={styles.basicReminderCard} onPress={() => handleLaunchPress(reminder.launchId)}>
+                <View style={styles.basicReminderContent}>
+                  <MaterialIcons name="notifications" size={24} color={Colors.primary} />
+                  <View style={styles.basicReminderText}>
+                    <Text style={styles.basicReminderTitle}>{reminder.launchName}</Text>
+                    <Text style={styles.basicReminderSubtitle}>
+                      Reminder: {formatLaunchDate(reminderTime.toISOString())}
+                    </Text>
                   </View>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => handleCancelReminder(reminder)}
+                  >
+                    <MaterialIcons name="close" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
                 </View>
-              );
-            } else {
-              // Launch not found, show basic reminder card
-              return (
-                <GlassCard style={styles.basicReminderCard}>
-                  <View style={styles.basicReminderContent}>
-                    <MaterialIcons name="notifications" size={24} color={Colors.primary} />
-                    <View style={styles.basicReminderText}>
-                      <Text style={styles.basicReminderTitle}>{reminder.launchName}</Text>
-                      <Text style={styles.basicReminderSubtitle}>
-                        Reminder: {formatLaunchDate(reminderTime.toISOString())}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={() => handleCancelReminder(reminder)}
-                    >
-                      <MaterialIcons name="close" size={18} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                </GlassCard>
-              );
-            }
+              </GlassCard>
+            );
           } else {
             const provider = item.data as FollowedProvider;
             return (

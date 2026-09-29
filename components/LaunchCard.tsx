@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Launch } from '../types';
+import { Launch, LaunchImage } from '../types';
 import { formatLaunchDateShort, getTimeUntilLaunch } from '../utils/dateUtils';
 import { CountdownTimer } from './CountdownTimer';
-import { launchAPI } from '../services/api';
 import { GlassCard, StatusBadge, GradientButton } from './ui';
 import { Colors } from '../constants/colors';
 
@@ -15,12 +14,10 @@ interface LaunchCardProps {
   showCountdown?: boolean;
 }
 
-// Helper function to extract image URL from object or string
-const getImageUrl = (image: string | { image_url?: string } | null | undefined): string | null => {
+const getImageUrl = (image: string | LaunchImage | null | undefined): string | null => {
   if (!image) return null;
   if (typeof image === 'string') return image;
-  if (typeof image === 'object' && image.image_url) return image.image_url;
-  return null;
+  return image.thumbnail_url || image.image_url || null;
 };
 
 export const LaunchCard = React.memo<LaunchCardProps>(({
@@ -28,55 +25,14 @@ export const LaunchCard = React.memo<LaunchCardProps>(({
   onPress,
   showCountdown = false,
 }) => {
-  const [rocketImageUrl, setRocketImageUrl] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
-  // Determine image URL with fallback chain: rocket image → launch image → mission patch → agency logo
-  const launchImageUrl = getImageUrl(launch.image as any);
-  const imageUrl = rocketImageUrl || launchImageUrl || launch.mission?.agencies?.[0]?.logo_url || null;
-  
-  // Debug logging (development only)
-  useEffect(() => {
-    if (__DEV__) {
-      // Debug logging can be added here if needed
-    }
-  }, [imageUrl, launch.name]);
+  const launchImageUrl = getImageUrl(launch.image);
+  const imageUrl = launchImageUrl || launch.mission?.agencies?.[0]?.logo_url || null;
 
   useEffect(() => {
-    // Reset image error when image URL changes
     setImageError(false);
-    setImageLoading(true);
   }, [imageUrl]);
-
-  useEffect(() => {
-    // Fetch rocket configuration to get rocket image
-    const fetchRocketImage = async () => {
-      if (!launch.rocket?.configuration?.id) {
-        setImageLoading(false);
-        return;
-      }
-
-      try {
-        const rocketConfig = await launchAPI.getRocketConfiguration(
-          launch.rocket.configuration.id,
-          true // Use cache
-        );
-
-        if (rocketConfig?.image_url) {
-          setRocketImageUrl(rocketConfig.image_url);
-        } else {
-          // No rocket image available
-        }
-      } catch (error) {
-        // Silently fail - we'll use fallback images
-      } finally {
-        setImageLoading(false);
-      }
-    };
-
-    fetchRocketImage();
-  }, [launch.rocket?.configuration?.id]);
 
   const formatTime = (dateString: string): string => {
     try {
@@ -102,13 +58,11 @@ export const LaunchCard = React.memo<LaunchCardProps>(({
                 source={{ uri: imageUrl }} 
                 style={styles.icon} 
                 resizeMode="cover"
-                onError={(error) => {
+                onError={() => {
                   setImageError(true);
-                  setImageLoading(false);
                 }}
                 onLoad={() => {
                   setImageError(false);
-                  setImageLoading(false);
                 }}
               />
             ) : (

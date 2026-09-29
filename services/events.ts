@@ -32,28 +32,37 @@ export interface SpaceEvent {
 
 const CACHE_PREFIX = 'events_cache_';
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for events
+const STALE_EVENTS_TTL_MS = 24 * 60 * 60 * 1000;
+const eventsInflight = new Map<string, Promise<SpaceEvent[]>>();
 
-async function getCachedEvents(key: string): Promise<SpaceEvent[] | null> {
+async function readEventsCache(key: string): Promise<{ data: SpaceEvent[]; fresh: boolean } | null> {
   const cacheKey = `${CACHE_PREFIX}${key}`;
-  
-  // 1. Memory Cache
-  const memoryData = memoryCache.get<SpaceEvent[]>(cacheKey);
-  if (memoryData) return memoryData;
+  const memory = memoryCache.getWithMeta<SpaceEvent[]>(cacheKey);
+  if (memory.data && !memory.isStale) {
+    return { data: memory.data, fresh: true };
+  }
 
-  // 2. Persistent Cache - return immediately if found (even if stale)
   try {
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
-      
-      // Update memory cache for faster future access
-      memoryCache.set(cacheKey, data);
-      
-      // Return data even if stale (stale-while-revalidate pattern)
-      return data;
+      if (Array.isArray(data) && typeof timestamp === 'number') {
+        const age = Date.now() - timestamp;
+        if (age < CACHE_TTL_MS) {
+          memoryCache.set(cacheKey, data);
+          return { data, fresh: true };
+        }
+        if (age < STALE_EVENTS_TTL_MS) {
+          return { data, fresh: false };
+        }
+      }
     }
   } catch (error) {
     if (__DEV__) console.error('Error reading events cache:', error);
+  }
+
+  if (memory.data) {
+    return { data: memory.data, fresh: false };
   }
   return null;
 }
@@ -380,33 +389,55 @@ export async function getMeteorShowerEvents(startDate: string, endDate: string):
     return events;
 }
 
+async function loadEvents(startDate: string, endDate: string): Promise<SpaceEvent[]> {
+  const results = await Promise.allSettled([
+    getLaunchEvents(startDate, endDate),
+    getAsteroidEvents(startDate, endDate),
+    getMeteorShowerEvents(startDate, endDate),
+    getMoonPhaseEvents(startDate, endDate),
+    getAPODEvents(startDate, endDate),
+  ]);
+
+  const events: SpaceEvent[] = [];
+  results.forEach(r => {
+    if (r.status === 'fulfilled') events.push(...r.value);
+  });
+
+  return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
 export async function getAllEvents(
   startDate: string,
   endDate: string,
   useCache: boolean = true
 ): Promise<SpaceEvent[]> {
-    const cacheKey = getCacheKey(startDate, endDate);
-    if (useCache) {
-        const cached = await getCachedEvents(cacheKey);
-        if (cached) return cached;
+  const cacheKey = getCacheKey(startDate, endDate);
+  const cached = useCache ? await readEventsCache(cacheKey) : null;
+  if (cached?.fresh) return cached.data;
+
+  const existing = eventsInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = (async () => {
+    try {
+      const sorted = await loadEvents(startDate, endDate);
+      if (sorted.length > 0 || !cached) {
+        await setCachedEvents(cacheKey, sorted);
+        return sorted;
+      }
+      return cached.data;
+    } catch {
+      if (cached) return cached.data;
+      throw new Error('Could not load space events. Check your connection and try again.');
     }
+  })();
 
-    const results = await Promise.allSettled([
-      getLaunchEvents(startDate, endDate),
-      getAsteroidEvents(startDate, endDate),
-      getMeteorShowerEvents(startDate, endDate),
-      getMoonPhaseEvents(startDate, endDate),
-      getAPODEvents(startDate, endDate),
-    ]);
-
-    const events: SpaceEvent[] = [];
-    results.forEach(r => {
-        if (r.status === 'fulfilled') events.push(...r.value);
-    });
-
-    const sorted = events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    await setCachedEvents(cacheKey, sorted);
-    return sorted;
+  eventsInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    eventsInflight.delete(cacheKey);
+  }
 }
 
 export async function getEventsForDay(date: Date): Promise<SpaceEvent[]> {

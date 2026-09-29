@@ -1,18 +1,14 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApiEnv, getBaseUrlForEnv } from './config';
 
-const DEV_BASE_URL = 'https://lldev.thespacedevs.com/2.3.0';
-const PROD_BASE_URL = 'https://ll.thespacedevs.com/2.3.0';
 const CACHE_PREFIX = 'filter_options_';
 const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+const LIST_LIMIT = 100;
+const filterInflight = new Map<string, Promise<unknown>>();
 
 const getBaseUrl = async (): Promise<string> => {
-  try {
-    const env = await AsyncStorage.getItem('api_environment');
-    return env === 'production' ? PROD_BASE_URL : DEV_BASE_URL;
-  } catch {
-    return DEV_BASE_URL;
-  }
+  return getBaseUrlForEnv(await getApiEnv());
 };
 
 interface CachedData<T> {
@@ -20,21 +16,50 @@ interface CachedData<T> {
   timestamp: number;
 }
 
-const getCachedData = async <T>(key: string): Promise<T | null> => {
+const readCachedData = async <T>(key: string): Promise<{ data: T; fresh: boolean } | null> => {
   try {
     const cached = await AsyncStorage.getItem(key);
     if (cached) {
       const { data, timestamp }: CachedData<T> = JSON.parse(cached);
-      const age = Date.now() - timestamp;
-      if (age < CACHE_EXPIRY) {
-        return data;
-      }
+      if (data === undefined || typeof timestamp !== 'number') return null;
+      return { data, fresh: Date.now() - timestamp < CACHE_EXPIRY };
     }
   } catch (error) {
     if (__DEV__) console.error('Error reading cache:', error);
   }
   return null;
 };
+
+async function fetchFilterList<T>(cacheKey: string, path: string, mapRow: (row: any) => T): Promise<T[]> {
+  const cached = await readCachedData<T[]>(cacheKey);
+  if (cached?.fresh) return cached.data;
+
+  const existing = filterInflight.get(cacheKey);
+  if (existing) return existing as Promise<T[]>;
+
+  const request = (async () => {
+    try {
+      const baseUrl = await getBaseUrl();
+      const response = await axios.get(`${baseUrl}${path}`, { timeout: 15000 });
+      const rows = Array.isArray(response.data?.results) ? response.data.results.map(mapRow) : [];
+      await setCachedData(cacheKey, rows);
+      return rows;
+    } catch (error: any) {
+      if (cached) return cached.data;
+      if (error?.response?.status !== 404 && __DEV__) {
+        console.error(`Error fetching ${path}:`, error);
+      }
+      return [];
+    }
+  })();
+
+  filterInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    filterInflight.delete(cacheKey);
+  }
+}
 
 const setCachedData = async <T>(key: string, data: T): Promise<void> => {
   try {
@@ -82,134 +107,80 @@ export interface ProgramOption {
 
 class FilterOptionsService {
   async getLocations(): Promise<LocationOption[]> {
-    const cacheKey = `${CACHE_PREFIX}locations`;
-    const cached = await getCachedData<LocationOption[]>(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const baseUrl = await getBaseUrl();
-      const response = await axios.get(`${baseUrl}/location/?limit=500`);
-      const locations = response.data.results.map((loc: any) => ({
-        id: loc.id,
-        name: loc.name,
-        country_code: loc.country_code,
-      }));
-      await setCachedData(cacheKey, locations);
-      return locations;
-    } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
-        console.error('Error fetching locations:', error);
-      }
-      return [];
-    }
+    return fetchFilterList(`${CACHE_PREFIX}locations`, `/location/?limit=${LIST_LIMIT}`, (loc) => ({
+      id: loc.id,
+      name: loc.name,
+      country_code: loc.country_code,
+    }));
   }
 
   async getRockets(): Promise<RocketOption[]> {
     const cacheKey = `${CACHE_PREFIX}rockets`;
-    const cached = await getCachedData<RocketOption[]>(cacheKey);
-    if (cached) return cached;
+    const cached = await readCachedData<RocketOption[]>(cacheKey);
+    if (cached?.fresh) return cached.data;
 
-    try {
-      const baseUrl = await getBaseUrl();
-      // Try launcher endpoint first, fallback to launcherconfig
-      let response;
+    const existing = filterInflight.get(cacheKey);
+    if (existing) return existing as Promise<RocketOption[]>;
+
+    const request = (async () => {
       try {
-        response = await axios.get(`${baseUrl}/config/launcher/?limit=500`);
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          // Try alternative endpoint
-          response = await axios.get(`${baseUrl}/config/launcherconfig/?limit=500`);
-        } else {
-          throw error;
+        const baseUrl = await getBaseUrl();
+        let response;
+        try {
+          response = await axios.get(`${baseUrl}/config/launcher/?limit=${LIST_LIMIT}`, { timeout: 15000 });
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            response = await axios.get(`${baseUrl}/config/launcherconfig/?limit=${LIST_LIMIT}`, { timeout: 15000 });
+          } else {
+            throw error;
+          }
         }
+        const rockets = (response.data?.results || []).map((rocket: any) => ({
+          id: rocket.id,
+          name: rocket.name,
+          family: rocket.family || '',
+          variant: rocket.variant || undefined,
+        }));
+        await setCachedData(cacheKey, rockets);
+        return rockets;
+      } catch (error: any) {
+        if (cached) return cached.data;
+        if (error?.response?.status !== 404 && __DEV__) {
+          console.error('Error fetching rockets:', error);
+        }
+        return [];
       }
-      const rockets = response.data.results.map((rocket: any) => ({
-        id: rocket.id,
-        name: rocket.name,
-        family: rocket.family || '',
-        variant: rocket.variant || undefined,
-      }));
-      await setCachedData(cacheKey, rockets);
-      return rockets;
-    } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
-        console.error('Error fetching rockets:', error);
-      }
-      return [];
+    })();
+
+    filterInflight.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      filterInflight.delete(cacheKey);
     }
   }
 
   async getAgencies(): Promise<AgencyOption[]> {
-    const cacheKey = `${CACHE_PREFIX}agencies`;
-    const cached = await getCachedData<AgencyOption[]>(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const baseUrl = await getBaseUrl();
-      const response = await axios.get(`${baseUrl}/agencies/?limit=500`);
-      const agencies = response.data.results.map((agency: any) => ({
-        id: agency.id,
-        name: agency.name,
-        country_code: agency.country_code || '',
-      }));
-      await setCachedData(cacheKey, agencies);
-      return agencies;
-    } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
-        console.error('Error fetching agencies:', error);
-      }
-      return [];
-    }
+    return fetchFilterList(`${CACHE_PREFIX}agencies`, `/agencies/?limit=${LIST_LIMIT}`, (agency) => ({
+      id: agency.id,
+      name: agency.name,
+      country_code: agency.country_code || '',
+    }));
   }
 
   async getOrbits(): Promise<OrbitOption[]> {
-    const cacheKey = `${CACHE_PREFIX}orbits`;
-    const cached = await getCachedData<OrbitOption[]>(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const baseUrl = await getBaseUrl();
-      const response = await axios.get(`${baseUrl}/config/orbit/?limit=500`);
-      const orbits = response.data.results.map((orbit: any) => ({
-        id: orbit.id,
-        name: orbit.name,
-        abbrev: orbit.abbrev || '',
-      }));
-      await setCachedData(cacheKey, orbits);
-      return orbits;
-    } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
-        console.error('Error fetching orbits:', error);
-      }
-      return [];
-    }
+    return fetchFilterList(`${CACHE_PREFIX}orbits`, `/config/orbit/?limit=${LIST_LIMIT}`, (orbit) => ({
+      id: orbit.id,
+      name: orbit.name,
+      abbrev: orbit.abbrev || '',
+    }));
   }
 
   async getPrograms(): Promise<ProgramOption[]> {
-    const cacheKey = `${CACHE_PREFIX}programs`;
-    const cached = await getCachedData<ProgramOption[]>(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const baseUrl = await getBaseUrl();
-      const response = await axios.get(`${baseUrl}/program/?limit=500`);
-      const programs = response.data.results.map((program: any) => ({
-        id: program.id,
-        name: program.name,
-      }));
-      await setCachedData(cacheKey, programs);
-      return programs;
-    } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
-        console.error('Error fetching programs:', error);
-      }
-      return [];
-    }
+    return fetchFilterList(`${CACHE_PREFIX}programs`, `/program/?limit=${LIST_LIMIT}`, (program) => ({
+      id: program.id,
+      name: program.name,
+    }));
   }
 
   // Get unique countries from locations
@@ -251,14 +222,14 @@ class FilterOptionsService {
   // Get unique mission types (from launches)
   async getMissionTypes(): Promise<string[]> {
     const cacheKey = `${CACHE_PREFIX}mission_types`;
-    const cached = await getCachedData<string[]>(cacheKey);
-    if (cached) return cached;
+    const cached = await readCachedData<string[]>(cacheKey);
+    if (cached?.fresh) return cached.data;
 
     try {
       const baseUrl = await getBaseUrl();
-      const response = await axios.get(`${baseUrl}/launch/?limit=1000`);
+      const response = await axios.get(`${baseUrl}/launch/?limit=${LIST_LIMIT}`, { timeout: 15000 });
       const types = new Set<string>();
-      response.data.results.forEach((launch: any) => {
+      (response.data?.results || []).forEach((launch: any) => {
         if (launch.mission?.type) {
           types.add(launch.mission.type);
         }
@@ -267,8 +238,8 @@ class FilterOptionsService {
       await setCachedData(cacheKey, typesArray);
       return typesArray;
     } catch (error: any) {
-      // Silently return empty array on 404 or other errors
-      if (error.response?.status !== 404 && __DEV__) {
+      if (cached) return cached.data;
+      if (error?.response?.status !== 404 && __DEV__) {
         console.error('Error fetching mission types:', error);
       }
       return [];

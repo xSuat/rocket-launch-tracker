@@ -18,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { LaunchCard } from '../components/LaunchCard';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
 import { PageHeader, StatCard } from '../components/ui';
 import { isLaunchUpcoming } from '../components/ui/StatusBadge';
 import { Colors } from '../constants/colors';
@@ -30,10 +31,12 @@ export const FavoritesScreen: React.FC = () => {
   const { favorites, favoriteLaunches, setFavoriteLaunches } = useApp();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadFavoriteLaunches = useCallback(async (showLoading = false) => {
     if (favorites.length === 0) {
       setFavoriteLaunches([]);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -42,18 +45,26 @@ export const FavoritesScreen: React.FC = () => {
       if (showLoading) {
         setLoading(true);
       }
-      const launches: Launch[] = [];
-      for (const id of favorites) {
-        try {
-          const launch = await launchAPI.getLaunchById(id);
-          launches.push(launch);
-        } catch (error) {
-          if (__DEV__) console.error(`Error loading launch ${id}:`, error);
-        }
-      }
+      setError(null);
+      const launches = (
+        await Promise.all(
+          favorites.map(async (id) => {
+            try {
+              return await launchAPI.getLaunchById(id);
+            } catch (loadError) {
+              if (__DEV__) console.error(`Error loading launch ${id}:`, loadError);
+              return null;
+            }
+          })
+        )
+      ).filter((launch): launch is Launch => launch !== null);
       setFavoriteLaunches(launches);
-    } catch (error) {
-      if (__DEV__) console.error('Error loading favorites:', error);
+      if (launches.length === 0) {
+        setError('Saved launches could not be loaded. Check your connection and try again.');
+      }
+    } catch (loadError) {
+      if (__DEV__) console.error('Error loading favorites:', loadError);
+      setError('Saved launches could not be loaded. Check your connection and try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -139,6 +150,8 @@ export const FavoritesScreen: React.FC = () => {
         <View style={[styles.loadingContainer, { paddingTop: topSectionHeight + 24 }]}>
           <LoadingState message="Loading favorites..." />
         </View>
+      ) : error && favoriteLaunches.length === 0 ? (
+        <ErrorState message={error} onRetry={() => loadFavoriteLaunches(true)} />
       ) : favoriteLaunches.length === 0 ? (
         <ScrollView 
           style={styles.list}

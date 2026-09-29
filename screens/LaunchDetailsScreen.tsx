@@ -37,11 +37,10 @@ import { Colors } from '../constants/colors';
 type LaunchDetailsRouteProp = RouteProp<RootStackParamList, 'LaunchDetails'>;
 
 // Helper function to extract image URL from object or string
-const getImageUrl = (image: string | { image_url?: string } | null | undefined): string | null => {
+const getImageUrl = (image: string | { image_url?: string | null; thumbnail_url?: string | null } | null | undefined): string | null => {
   if (!image) return null;
   if (typeof image === 'string') return image;
-  if (typeof image === 'object' && image.image_url) return image.image_url;
-  return null;
+  return image.image_url || image.thumbnail_url || null;
 };
 
 export const LaunchDetailsScreen: React.FC = () => {
@@ -74,24 +73,11 @@ export const LaunchDetailsScreen: React.FC = () => {
   useEffect(() => {
     if (launch?.rocket?.configuration?.id) {
         const configId = launch.rocket.configuration.id;
-        const providerName = launch.launch_service_provider?.name;
-        const rocketName = launch.rocket.configuration.name;
 
-        // Use Promise.allSettled to load rocket config and SpaceX data in parallel
-        Promise.allSettled([
-          launchAPI.getRocketConfiguration(configId),
-          providerName === 'SpaceX' 
-            ? launchAPI.getSpaceXRocketData(rocketName.toLowerCase().replace(/\s+/g, '-'))
-            : Promise.resolve(null)
-        ]).then(([rocketConfigResult, spacexDataResult]) => {
-          const rocketConfig = rocketConfigResult.status === 'fulfilled' ? rocketConfigResult.value : null;
-          const spacexData = spacexDataResult.status === 'fulfilled' ? spacexDataResult.value : null;
-          
+        launchAPI.getRocketConfiguration(configId).then((rocketConfig) => {
           if (!rocketConfig) return;
-          
-          // Combine LL2 and SpaceX data
-          const rocketImageUrl = rocketConfig.image_url || spacexData?.flickr_images?.[0] || null;
-          
+
+          const rocketImageUrl = rocketConfig.image_url || null;
           const combined: RocketDetails = {
             id: rocketConfig.id,
             name: rocketConfig.name,
@@ -101,40 +87,25 @@ export const LaunchDetailsScreen: React.FC = () => {
             description: rocketConfig.description,
             min_stage: rocketConfig.min_stage,
             max_stage: rocketConfig.max_stage,
-            length: rocketConfig.length || spacexData?.height?.meters,
-            diameter: rocketConfig.diameter || spacexData?.diameter?.meters,
-            launch_mass: rocketConfig.launch_mass || spacexData?.mass?.kg,
-            leo_capacity: rocketConfig.leo_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'leo')?.kg,
-            gto_capacity: rocketConfig.gto_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'gto')?.kg,
-            to_thrust: rocketConfig.to_thrust || spacexData?.first_stage?.thrust_sea_level?.kN,
+            length: rocketConfig.length,
+            diameter: rocketConfig.diameter,
+            launch_mass: rocketConfig.launch_mass,
+            leo_capacity: rocketConfig.leo_capacity,
+            gto_capacity: rocketConfig.gto_capacity,
+            to_thrust: rocketConfig.to_thrust,
             image_url: rocketImageUrl,
             info_url: rocketConfig.info_url,
             wiki_url: rocketConfig.wiki_url,
-            first_flight: rocketConfig.first_flight || spacexData?.first_flight,
-            boosters: spacexData?.boosters,
-            cost_per_launch: spacexData?.cost_per_launch,
-            success_rate_pct: spacexData?.success_rate_pct,
-            stages: spacexData?.stages,
-            engines: spacexData?.engines ? {
-              number: spacexData.engines.number,
-              type: spacexData.engines.type,
-              version: spacexData.engines.version,
-              layout: spacexData.engines.layout,
-              isp: spacexData.engines.isp,
-              thrust_sea_level: spacexData.engines.thrust_sea_level,
-              thrust_vacuum: spacexData.engines.thrust_vacuum,
-            } : undefined,
-            landing_legs: spacexData?.landing_legs,
-            payload_weights: spacexData?.payload_weights,
+            first_flight: rocketConfig.first_flight,
           };
-          
+
           setRocketDetails(combined);
-          
+
           if (rocketImageUrl && !heroImageUrl) {
             setHeroImageUrl(rocketImageUrl);
           }
         }).catch(() => {
-          // Silently fail - rocket details are optional
+          // Rocket details are optional
         });
     }
   }, [launch?.rocket?.configuration?.id]);

@@ -70,6 +70,14 @@ export interface Mission {
 
 export type DataSource = "LL2" | "NASA_NeoWs" | "NASA_APOD" | "Other";
 
+export interface LaunchImage {
+  id?: number;
+  name?: string;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  credit?: string | null;
+}
+
 export interface Launch {
   id: string;
   url: string;
@@ -102,7 +110,7 @@ export interface Launch {
   mission?: Mission;
   pad: Pad;
   webcast_live?: boolean;
-  image?: string;
+  image?: string | LaunchImage | null;
   infographic?: string;
   program?: Array<{
     id: number;

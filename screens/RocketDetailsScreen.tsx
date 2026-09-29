@@ -27,11 +27,10 @@ import { Colors } from '../constants/colors';
 type RocketDetailsRouteProp = RouteProp<RootStackParamList, 'RocketDetails'>;
 
 // Helper function to extract image URL from object or string
-const getImageUrl = (image: string | { image_url?: string } | null | undefined): string | null => {
+const getImageUrl = (image: string | { image_url?: string | null; thumbnail_url?: string | null } | null | undefined): string | null => {
   if (!image) return null;
   if (typeof image === 'string') return image;
-  if (typeof image === 'object' && image.image_url) return image.image_url;
-  return null;
+  return image.image_url || image.thumbnail_url || null;
 };
 
 // Helper function to check if URL is an API URL
@@ -306,78 +305,7 @@ export const RocketDetailsScreen: React.FC = () => {
       
       setRocket(data);
       setIsFallbackData(isFromFallback);
-      
-      // Try to get SpaceX data if applicable (non-blocking)
-      // Try SpaceX API for any rocket - it might have data even if not a Falcon
-      Promise.resolve().then(async () => {
-        let spacexData = null;
-        // Try SpaceX API for any rocket - it has data for many rockets
-        try {
-          // Try different name variations
-          const nameVariations = [
-            data.name.toLowerCase().replace(/\s+/g, '-'),
-            data.full_name?.toLowerCase().replace(/\s+/g, '-'),
-            data.name.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9-]/g, ''),
-          ].filter(Boolean);
-          
-          for (const rocketName of nameVariations) {
-            try {
-              spacexData = await launchAPI.getSpaceXRocketData(rocketName);
-              if (spacexData) {
-                if (__DEV__) console.log('[RocketDetailsScreen] Found SpaceX data for:', rocketName);
-                break;
-              }
-            } catch (e) {
-              // Try next variation
-              continue;
-            }
-          }
-        } catch (spacexError) {
-          if (__DEV__) console.log('[RocketDetailsScreen] SpaceX data not available for this rocket');
-        }
-        
-        const combined: RocketDetails = {
-          id: data.id,
-          name: data.name,
-          family: data.family || '',
-          full_name: data.full_name || data.name,
-          variant: data.variant,
-          description: data.description,
-          min_stage: data.min_stage,
-          max_stage: data.max_stage,
-          length: data.length || spacexData?.height?.meters,
-          diameter: data.diameter || spacexData?.diameter?.meters,
-          launch_mass: data.launch_mass || spacexData?.mass?.kg,
-          leo_capacity: data.leo_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'leo')?.kg,
-          gto_capacity: data.gto_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'gto')?.kg,
-          to_thrust: data.to_thrust || spacexData?.first_stage?.thrust_sea_level?.kN,
-          // Prefer existing image_url, but use SpaceX images as fallback
-          image_url: (data.image_url && data.image_url.trim() !== '') ? data.image_url : (spacexData?.flickr_images?.[0] || undefined),
-          info_url: data.info_url,
-          wiki_url: data.wiki_url,
-          first_flight: data.first_flight || spacexData?.first_flight,
-          last_flight: data.last_flight,
-          boosters: spacexData?.boosters,
-          cost_per_launch: spacexData?.cost_per_launch,
-          success_rate_pct: spacexData?.success_rate_pct,
-          stages: spacexData?.stages,
-          engines: spacexData?.engines ? {
-            number: spacexData.engines.number,
-            type: spacexData.engines.type,
-            version: spacexData.engines.version,
-            layout: spacexData.engines.layout,
-            isp: spacexData.engines.isp,
-            thrust_sea_level: spacexData.engines.thrust_sea_level,
-            thrust_vacuum: spacexData.engines.thrust_vacuum,
-          } : undefined,
-          landing_legs: spacexData?.landing_legs,
-          payload_weights: spacexData?.payload_weights,
-        };
-        
-        setRocketDetails(combined);
-      });
-      
-      // Set basic rocket details immediately with enhanced data
+
       const basicDetails: RocketDetails = {
         id: data.id,
         name: data.name,
@@ -385,7 +313,15 @@ export const RocketDetailsScreen: React.FC = () => {
         full_name: data.full_name || data.name,
         variant: data.variant,
         description: data.description,
-        image_url: data.image_url, // Ensure image_url is set
+        min_stage: data.min_stage,
+        max_stage: data.max_stage,
+        length: data.length,
+        diameter: data.diameter,
+        launch_mass: data.launch_mass,
+        leo_capacity: data.leo_capacity,
+        gto_capacity: data.gto_capacity,
+        to_thrust: data.to_thrust,
+        image_url: data.image_url,
         info_url: data.info_url,
         wiki_url: data.wiki_url,
         first_flight: data.first_flight,

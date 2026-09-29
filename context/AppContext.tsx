@@ -101,9 +101,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (dataSourceLabels !== null) {
         setShowDataSourceLabelsState(dataSourceLabels === 'true');
       }
-      if (apiEnv === 'prod' || apiEnv === 'dev') {
+      if (__DEV__ && (apiEnv === 'prod' || apiEnv === 'dev')) {
         setApiEnvironmentState(apiEnv);
-        // Update API client base URL when loading saved environment
         const { launchAPI } = require('../services/api');
         launchAPI.updateBaseUrl(apiEnv);
       }
