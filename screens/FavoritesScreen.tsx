@@ -20,7 +20,7 @@ import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { PageHeader, StatCard } from '../components/ui';
-import { isLaunchUpcoming } from '../components/ui/StatusBadge';
+import { isUpcomingStatus } from '../utils/launchStatus';
 import { Colors } from '../constants/colors';
 
 type NavigationProp = TabScreenNavigationProp<'Favorites'>;
@@ -98,7 +98,7 @@ export const FavoritesScreen: React.FC = () => {
   // Calculate stats
   const stats = useMemo(() => {
     const total = favoriteLaunches.length;
-    const upcoming = favoriteLaunches.filter(l => isLaunchUpcoming(l.status?.abbrev || '')).length;
+    const upcoming = favoriteLaunches.filter((l) => isUpcomingStatus(l.status?.id)).length;
     const providers = new Set(
       favoriteLaunches
         .map(l => l.launch_service_provider?.name)
@@ -173,7 +173,7 @@ export const FavoritesScreen: React.FC = () => {
             <LaunchCard
               launch={item}
               onPress={() => handleLaunchPress(item.id)}
-              showCountdown={isLaunchUpcoming(item.status?.abbrev || '')}
+              showCountdown={isUpcomingStatus(item.status?.id)}
             />
           )}
           refreshControl={

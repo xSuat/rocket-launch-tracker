@@ -4,10 +4,12 @@ import { StyleSheet, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { AppProvider } from './context/AppContext';
 import { AppNavigator } from './navigation/AppNavigator';
+import { SkyBackground } from './components/sky/SkyBackground';
+import { ToastProvider } from './components/ui/Toast';
 
 export default function App() {
-  const notificationListener = useRef<Notifications.Subscription>();
-  const responseListener = useRef<Notifications.Subscription>();
+  const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
+  const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
   useEffect(() => {
     // Handle notifications received while app is foregrounded
@@ -33,10 +35,13 @@ export default function App() {
 
   return (
     <AppProvider>
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <AppNavigator />
-      </View>
+      <ToastProvider>
+        <View style={styles.container}>
+          <SkyBackground />
+          <StatusBar style="light" />
+          <AppNavigator />
+        </View>
+      </ToastProvider>
     </AppProvider>
   );
 }

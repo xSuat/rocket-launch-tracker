@@ -1,10 +1,10 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Platform } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { Platform, StyleSheet, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { color, type } from '../constants/theme';
 import { UpcomingLaunchesScreen } from '../screens/UpcomingLaunchesScreen';
 import { HistoricalLaunchesScreen } from '../screens/HistoricalLaunchesScreen';
 import { FavoritesScreen } from '../screens/FavoritesScreen';
@@ -16,7 +16,6 @@ import { RocketDetailsScreen } from '../screens/RocketDetailsScreen';
 import { SpaceEventsCalendarScreen } from '../screens/SpaceEventsCalendarScreen';
 import { GalleryScreen } from '../screens/GalleryScreen';
 import { RootStackParamList, TabParamList } from '../types/navigation';
-import { Colors } from '../constants/colors';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -24,38 +23,28 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const TabNavigator = () => {
   return (
     <Tab.Navigator
+      sceneContainerStyle={{ backgroundColor: 'transparent' }}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: Platform.OS === 'ios' ? {
-          position: 'absolute',
-          backgroundColor: 'transparent',
-          borderTopWidth: 0,
-          elevation: 0,
-        } : {
-          backgroundColor: Colors.cardSolid,
-          borderTopColor: Colors.border,
-          borderTopWidth: 1,
+        tabBarHideOnKeyboard: Platform.OS === 'android',
+        tabBarStyle: {
+          backgroundColor: color.bg,
+          borderTopColor: color.hairline,
+          borderTopWidth: StyleSheet.hairlineWidth,
           elevation: 0,
         },
-        tabBarBackground: Platform.OS === 'ios' ? () => (
-          <BlurView
-            intensity={20}
-            tint="dark"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              bottom: 0,
-              right: 0,
-            }}
-          />
-        ) : undefined,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textMuted,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarActiveTintColor: color.text,
+        tabBarInactiveTintColor: color.textTertiary,
+        tabBarAllowFontScaling: true,
+        tabBarLabel: ({ color: labelColor, children }) => (
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+            style={[type.tabLabel, { color: labelColor }]}
+          >
+            {children}
+          </Text>
+        ),
       }}
     >
       <Tab.Screen
@@ -110,19 +99,35 @@ const TabNavigator = () => {
   );
 };
 
+const navigationTheme = {
+  ...DarkTheme,
+  dark: true,
+  colors: {
+    ...DarkTheme.colors,
+    primary: color.text,
+    background: 'transparent',
+    card: color.bg,
+    text: color.text,
+    border: color.hairline,
+    notification: color.text,
+  },
+};
+
 export const AppNavigator = () => {
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: Colors.background,
+            backgroundColor: color.bg,
           },
-          headerTintColor: Colors.text,
+          headerShadowVisible: false,
+          headerTintColor: color.text,
           headerTitleStyle: {
-            fontWeight: '600',
-            color: Colors.text,
+            ...type.headline,
+            color: color.text,
           },
+          contentStyle: { backgroundColor: 'transparent' },
         }}
       >
         <Stack.Screen

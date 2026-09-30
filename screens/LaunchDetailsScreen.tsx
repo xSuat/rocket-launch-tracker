@@ -31,7 +31,7 @@ import { MissionTimeline } from '../components/MissionTimeline';
 import { EngineLayout } from '../components/EngineLayout';
 import { RocketDetails, parseEngineLayout } from '../utils/rocketUtils';
 import { GlassCard, StatusBadge, GradientButton, DataSourceLabel } from '../components';
-import { isLaunchUpcoming, getStatusCategory, getStatusConfig } from '../components/ui/StatusBadge';
+import { getStatusCategory, getStatusConfig, isUpcomingStatus } from '../utils/launchStatus';
 import { Colors } from '../constants/colors';
 
 type LaunchDetailsRouteProp = RouteProp<RootStackParamList, 'LaunchDetails'>;
@@ -223,8 +223,8 @@ export const LaunchDetailsScreen: React.FC = () => {
     return <LoadingState message="Loading launch details..." />;
   }
 
-  const statusAbbrev = launch.status?.abbrev || '';
-  const isUpcoming = isLaunchUpcoming(statusAbbrev);
+  const statusAbbrev = launch.status?.name || launch.status?.abbrev || '';
+  const isUpcoming = isUpcomingStatus(launch.status?.id);
 
   return (
     <LinearGradient

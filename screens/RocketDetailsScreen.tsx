@@ -21,7 +21,7 @@ import { RocketDetails, parseEngineLayout } from '../utils/rocketUtils';
 import { Launch } from '../types';
 import { formatLaunchDate } from '../utils/dateUtils';
 import { GlassCard, StatusBadge } from '../components';
-import { getStatusCategory } from '../components/ui/StatusBadge';
+import { getStatusCategory } from '../utils/launchStatus';
 import { Colors } from '../constants/colors';
 
 type RocketDetailsRouteProp = RouteProp<RootStackParamList, 'RocketDetails'>;

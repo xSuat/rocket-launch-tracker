@@ -22,7 +22,7 @@ import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import { EmptyState } from '../components/EmptyState';
 import { StatCard, SpaceTerminologyModal, PageHeader } from '../components';
-import { isLaunchUpcoming, getStatusCategory } from '../components/ui/StatusBadge';
+import { isUpcomingStatus } from '../utils/launchStatus';
 import { Colors } from '../constants/colors';
 
 type NavigationProp = TabScreenNavigationProp<'Upcoming'>;
@@ -41,28 +41,12 @@ export const UpcomingLaunchesScreen: React.FC = () => {
     return !!(launch?.id && launch?.name && launch?.net);
   }, []);
 
-  const isLaunchUpcomingByDate = useCallback((launchDate: Date, bufferTime: number): boolean => {
-    const now = new Date();
-    return launchDate.getTime() > (now.getTime() - bufferTime);
-  }, []);
-
   const filteredLaunches = useMemo(() => {
-    const bufferTime = 5 * 60 * 1000;
-    
     return data.filter((launch) => {
-      if (!isValidLaunch(launch)) {
-        return false;
-      }
-      
-      const statusAbbrev = launch.status?.abbrev || '';
-      if (!isLaunchUpcoming(statusAbbrev)) {
-        return false;
-      }
-      
-      const launchDate = new Date(launch.net!);
-      return isLaunchUpcomingByDate(launchDate, bufferTime);
+      if (!isValidLaunch(launch)) return false;
+      return isUpcomingStatus(launch.status?.id);
     });
-  }, [data, isValidLaunch, isLaunchUpcomingByDate]);
+  }, [data, isValidLaunch]);
 
   const handleLaunchPress = useCallback((launchId: string) => {
       navigation.navigate('LaunchDetails', { launchId });
@@ -89,11 +73,7 @@ export const UpcomingLaunchesScreen: React.FC = () => {
       return launchDate.getFullYear() === currentYear;
     }).length;
     
-    const hasGoStatus = filteredLaunches.some(launch => {
-      const statusAbbrev = launch.status?.abbrev || '';
-      const category = getStatusCategory(statusAbbrev);
-      return category === 'success';
-    });
+    const hasGoStatus = filteredLaunches.some((launch) => launch.status?.id === 1);
     
     return {
       thisMonth,

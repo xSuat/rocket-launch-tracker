@@ -1,312 +1,157 @@
-import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { Colors } from '../../constants/colors';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { color, radius, type } from '../../constants/theme';
+import { useReduceMotion } from '../../hooks/useReduceMotion';
+import {
+  STATUS_FAILURE,
+  STATUS_GO,
+  STATUS_HOLD,
+  STATUS_IN_FLIGHT,
+  STATUS_PARTIAL_FAILURE,
+  STATUS_PAYLOAD_DEPLOYED,
+  STATUS_SUCCESS,
+  STATUS_TBC,
+  STATUS_TBD,
+  resolveStatusId,
+  statusLabel,
+} from '../../utils/launchStatus';
 
 interface StatusBadgeProps {
-  status: string;
+  statusId?: number | null;
+  status?: string | null;
   size?: 'small' | 'medium' | 'large';
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
-type StatusCategory = 'success' | 'pending' | 'active' | 'failed' | 'warning' | 'info' | 'neutral';
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ statusId, status, size = 'small', style }) => {
+  const id = resolveStatusId(statusId, status);
+  const label = statusLabel(id, status);
+  const reduce = useReduceMotion();
+  const pulse = useRef(new Animated.Value(1)).current;
 
-interface StatusConfig {
-  category: StatusCategory;
-  displayName: string;
-  bg: string;
-  text: string;
-}
+  useEffect(() => {
+    if (id !== STATUS_IN_FLIGHT || reduce) {
+      pulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.35, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [id, pulse, reduce]);
 
-export const getStatusConfig = (status: string): StatusConfig => {
-  const normalized = status.toLowerCase().trim();
-  const originalStatus = status.trim();
-  
-  // Success states - check exact matches first
-  if (normalized === 'go') {
-    return {
-      category: 'success',
-      displayName: 'GO',
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  if (normalized === 'success') {
-    return {
-      category: 'success',
-      displayName: 'Success',
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  if (normalized === 'launched') {
-    return {
-      category: 'success',
-      displayName: 'Launched',
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  if (normalized === 'landed') {
-    return {
-      category: 'success',
-      displayName: 'Landed',
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  if (normalized.includes('success')) {
-    return {
-      category: 'success',
-      displayName: 'Success',
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  if (normalized === 'launched' || normalized === 'landed') {
-    return {
-      category: 'success',
-      displayName: originalStatus,
-      bg: 'rgba(16, 185, 129, 0.2)',
-      text: Colors.successLight,
-    };
-  }
-  
-  // Failed states - check exact matches first
-  if (normalized === 'failure') {
-    return {
-      category: 'failed',
-      displayName: 'Failure',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized === 'partial failure') {
-    return {
-      category: 'failed',
-      displayName: 'Partial Failure',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized === 'aborted') {
-    return {
-      category: 'failed',
-      displayName: 'Aborted',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized === 'scrubbed') {
-    return {
-      category: 'failed',
-      displayName: 'Scrubbed',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized.includes('failure')) {
-    const isPartial = normalized.includes('partial');
-    return {
-      category: 'failed',
-      displayName: isPartial ? 'Partial Failure' : 'Failure',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized.includes('abort')) {
-    return {
-      category: 'failed',
-      displayName: 'Aborted',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized.includes('scrub')) {
-    return {
-      category: 'failed',
-      displayName: 'Scrubbed',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  if (normalized === 'retired') {
-    return {
-      category: 'failed',
-      displayName: 'Retired',
-      bg: 'rgba(239, 68, 68, 0.2)',
-      text: '#F87171',
-    };
-  }
-  
-  // Pending/Uncertain states
-  if (
-    normalized === 'tbd' ||
-    normalized === 'tbc' ||
-    normalized.includes('to be') ||
-    normalized.includes('pending') ||
-    normalized === 'hold' ||
-    normalized.includes('delayed') ||
-    normalized.includes('postponed')
-  ) {
-    let displayName = status;
-    if (normalized === 'tbd') displayName = 'TBD';
-    if (normalized === 'tbc') displayName = 'TBC';
-    if (normalized === 'hold') displayName = 'Hold';
-    
-    return {
-      category: 'pending',
-      displayName,
-      bg: 'rgba(245, 158, 11, 0.2)',
-      text: Colors.warningLight,
-    };
-  }
-  
-  // Active/In Progress states
-  if (
-    normalized === 'active' ||
-    normalized.includes('in flight') ||
-    normalized.includes('in progress') ||
-    normalized.includes('launching') ||
-    normalized.includes('orbital') ||
-    normalized === 'testing' ||
-    normalized.includes('preparing')
-  ) {
-    // Preserve original status text
-    let displayName = originalStatus;
-    if (normalized === 'active') displayName = 'Active';
-    else if (normalized.includes('in flight')) displayName = 'In Flight';
-    else if (normalized.includes('in progress')) displayName = 'In Progress';
-    else if (normalized.includes('launching')) displayName = 'Launching';
-    else if (normalized === 'testing') displayName = 'Testing';
-    
-    return {
-      category: 'active',
-      displayName,
-      bg: 'rgba(59, 130, 246, 0.2)',
-      text: '#60A5FA',
-    };
-  }
-  
-  // Warning states
-  if (
-    normalized.includes('concern') ||
-    normalized.includes('issue') ||
-    normalized.includes('problem') ||
-    normalized.includes('risk')
-  ) {
-    return {
-      category: 'warning',
-      displayName: status,
-      bg: 'rgba(245, 158, 11, 0.2)',
-      text: Colors.warningLight,
-    };
-  }
-  
-  // Info states
-  if (
-    normalized.includes('scheduled') ||
-    normalized.includes('planned') ||
-    normalized.includes('confirmed') ||
-    normalized.includes('announced')
-  ) {
-    return {
-      category: 'info',
-      displayName: status,
-      bg: 'rgba(139, 92, 246, 0.2)',
-      text: Colors.primaryLight,
-    };
-  }
-  
-  // Default/Neutral
-  return {
-    category: 'neutral',
-    displayName: status || 'Unknown',
-    bg: 'rgba(148, 163, 184, 0.2)',
-    text: Colors.textMuted,
-  };
-};
+  const medium = size !== 'small';
+  const textStyle = medium ? styles.mediumText : styles.smallText;
 
-export const getStatusCategory = (status: string): StatusCategory => {
-  return getStatusConfig(status).category;
-};
-
-export const isLaunchCompleted = (status: string): boolean => {
-  const category = getStatusCategory(status);
-  return category === 'success' || category === 'failed';
-};
-
-export const isLaunchUpcoming = (status: string): boolean => {
-  return !isLaunchCompleted(status);
-};
-
-const getSizeStyles = (size: 'small' | 'medium' | 'large') => {
-  switch (size) {
-    case 'small':
-      return {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        fontSize: 10,
-        borderRadius: 6,
-      };
-    case 'large':
-      return {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        fontSize: 14,
-        borderRadius: 12,
-      };
-    default: // medium
-      return {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        fontSize: 12,
-        borderRadius: 8,
-      };
+  if (id === STATUS_GO) {
+    return (
+      <View accessibilityLabel={label} style={[styles.base, styles.solid, style]}>
+        <Text maxFontSizeMultiplier={1.35} style={[textStyle, styles.onFill]}>{label}</Text>
+      </View>
+    );
   }
-};
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({
-  status,
-  size = 'medium',
-  style,
-}) => {
-  const config = getStatusConfig(status);
-  const sizeStyles = getSizeStyles(size);
+  if (id === STATUS_IN_FLIGHT) {
+    return (
+      <View accessibilityLabel={label} style={[styles.base, styles.soft, styles.row, style]}>
+        <Animated.View style={[styles.dot, { opacity: pulse }]} />
+        <Ionicons name="rocket-outline" size={12} color={color.textOnFill} />
+        <Text maxFontSizeMultiplier={1.35} style={[textStyle, styles.onFill]}>{label}</Text>
+      </View>
+    );
+  }
+
+  if (id === STATUS_SUCCESS || id === STATUS_PAYLOAD_DEPLOYED) {
+    return (
+      <View accessibilityLabel={label} style={[styles.base, styles.quiet, styles.row, style]}>
+        <Ionicons name="checkmark" size={12} color={color.textSecondary} />
+        <Text maxFontSizeMultiplier={1.35} style={[textStyle, styles.quietText]}>{label}</Text>
+      </View>
+    );
+  }
+
+  const outline =
+    id === STATUS_HOLD ? styles.hold :
+    id === STATUS_FAILURE ? styles.marked :
+    styles.outline;
+  const glyph =
+    id === STATUS_TBD ? 'ellipse-outline' :
+    id === STATUS_TBC ? 'help-outline' :
+    id === STATUS_HOLD ? 'pause' :
+    id === STATUS_FAILURE ? 'close' :
+    id === STATUS_PARTIAL_FAILURE ? 'remove' :
+    null;
+  const glyphColor = id === STATUS_TBC ? color.textSecondary : color.text;
 
   return (
-    <View
-      style={[
-        styles.badge,
-        {
-          backgroundColor: config.bg,
-          paddingHorizontal: sizeStyles.paddingHorizontal,
-          paddingVertical: sizeStyles.paddingVertical,
-          borderRadius: sizeStyles.borderRadius,
-        },
-        style,
-      ]}
-    >
-      <Text
-        style={[
-          styles.text,
-          {
-            color: config.text,
-            fontSize: sizeStyles.fontSize,
-          },
-        ]}
-      >
-        {config.displayName}
+    <View accessibilityLabel={label} style={[styles.base, outline, styles.row, style]}>
+      {glyph ? <Ionicons name={glyph} size={12} color={glyphColor} /> : null}
+      <Text maxFontSizeMultiplier={1.35} style={[textStyle, id === STATUS_TBC ? styles.quietText : styles.plain]}>
+        {label}
       </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  badge: {
+  base: {
     alignSelf: 'flex-start',
+    borderRadius: radius.badge,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
-  text: {
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  solid: {
+    backgroundColor: color.fill,
+  },
+  soft: {
+    backgroundColor: color.fillSoft,
+  },
+  outline: {
+    borderWidth: 1,
+    borderColor: color.border,
+  },
+  hold: {
+    borderWidth: 1,
+    borderColor: color.fill,
+  },
+  marked: {
+    borderWidth: 1,
+    borderColor: color.fill,
+  },
+  quiet: {
+    paddingHorizontal: 0,
+  },
+  smallText: {
+    ...type.caption,
+  },
+  mediumText: {
+    fontSize: 13,
+    lineHeight: 16,
     fontWeight: '600',
   },
+  onFill: {
+    color: color.textOnFill,
+  },
+  plain: {
+    color: color.text,
+  },
+  quietText: {
+    color: color.textSecondary,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: color.textOnFill,
+  },
 });
-
