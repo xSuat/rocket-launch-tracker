@@ -155,5 +155,5 @@ Submit the version in App Store Connect. Paste the review notes from `store.conf
 - iPhone only, portrait, `UIRequiresFullScreen` so the upload does not need every iPad orientation
 - No location permission and no ISS pass feature
 - Calendar purpose string for adding an event the user taps; no Reminders permission
-- Local notifications only (the `expo-notifications` config plugin is not used, because it would add the push entitlement)
+- Local notifications only. `plugins/withLocalNotificationsOnly.js` removes the `aps-environment` push entitlement that `expo-notifications` would otherwise add during prebuild
 - Privacy manifest for UserDefaults (`CA92.1`), file timestamps (`C617.1`), system boot time (`35F9.1`), and disk space (`E174.1`)

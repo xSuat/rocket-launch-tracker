@@ -20,7 +20,7 @@ eas build --profile development --platform android
 
 ## Expo Notifications Warning
 
-The app schedules local reminders only. It does not register for remote push, and `app.json` does not include the `expo-notifications` config plugin (that plugin would add the iOS push entitlement).
+The app schedules local reminders only. It does not register for remote push. Prebuild would otherwise add the iOS push entitlement because `expo-notifications` is installed; `plugins/withLocalNotificationsOnly.js` removes `aps-environment`.
 
 A warning about `expo-notifications` inside Expo Go is expected. Local reminders still work in Expo Go. A development build is only needed when you want to test the same native binary EAS produces.
 

@@ -23,16 +23,17 @@
           "calendarPermission": "Rocket Launch Tracker adds a launch or sky event to your calendar only when you tap Add to Calendar.",
           "remindersPermission": false
         }
-      ]
+      ],
+      "./plugins/withLocalNotificationsOnly.js"
     ],
     "ios": {
       "supportsTablet": false,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.rocketlaunchtracker.app",
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "UIRequiresFullScreen": true,
         "LSApplicationQueriesSchemes": [
           "waze"
         ]
