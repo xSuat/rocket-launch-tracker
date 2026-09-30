@@ -1,191 +1,78 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { getCountdown } from '../utils/dateUtils';
-import { Colors } from '../constants/colors';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { color, type } from '../constants/theme';
+import { useNow } from '../hooks/useNow';
+import { formatCountdownLabel, getCountdown } from '../utils/dateUtils';
 
 interface CountdownTimerProps {
-  launchDate: string;
-  size?: 'small' | 'medium' | 'large';
-  format?: 'full' | 'compact';
-  showIcon?: boolean;
-  animated?: boolean;
+  date: string;
+  passedLabel?: string;
 }
 
-export const CountdownTimer: React.FC<CountdownTimerProps> = ({
-  launchDate,
-  size = 'medium',
-  format = 'full',
-  showIcon = false,
-  animated = false,
-}) => {
-  const [countdown, setCountdown] = useState(getCountdown(launchDate));
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+function pad(value: number) {
+  return String(value).padStart(2, '0');
+}
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCountdown(getCountdown(launchDate));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [launchDate]);
-
-  useEffect(() => {
-    if (animated) {
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(fadeAnim, {
-            toValue: 0.7,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(fadeAnim, {
-            toValue: 1.0,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      animation.start();
-      return () => animation.stop();
+export const CountdownTimer: React.FC<CountdownTimerProps> = ({ date, passedLabel = 'Window passed' }) => {
+  const now = useNow(1000);
+  const parts = getCountdown(date, now);
+  const groups = useMemo(() => {
+    if (parts.days > 0) {
+      return [
+        { value: pad(parts.days), unit: 'D' },
+        { value: pad(parts.hours), unit: 'H' },
+        { value: pad(parts.minutes), unit: 'M' },
+        { value: pad(parts.seconds), unit: 'S' },
+      ];
     }
-  }, [animated, fadeAnim]);
+    return [
+      { value: pad(parts.hours), unit: 'H' },
+      { value: pad(parts.minutes), unit: 'M' },
+      { value: pad(parts.seconds), unit: 'S' },
+    ];
+  }, [parts.days, parts.hours, parts.minutes, parts.seconds]);
 
-  if (countdown.isPast) {
+  if (parts.isPast) {
     return (
-      <Animated.View style={[styles.container, animated && { opacity: fadeAnim }]}>
-        <Text style={[styles.label, sizeStyles[size].label]}>Launched</Text>
-      </Animated.View>
+      <Text accessibilityLabel={passedLabel} style={styles.passed}>
+        {passedLabel}
+      </Text>
     );
   }
 
-  const renderCompact = () => {
-    const parts: string[] = [];
-    if (countdown.days > 0) {
-      parts.push(`${countdown.days}D`);
-    }
-    if (countdown.hours > 0 || parts.length > 0) {
-      parts.push(`${countdown.hours}H`);
-    }
-    if (countdown.minutes > 0 || parts.length > 0) {
-      parts.push(`${countdown.minutes}M`);
-    }
-    parts.push(`${countdown.seconds}S`);
+  const label = formatCountdownLabel(parts);
 
-    return (
-      <Animated.View style={[styles.compactContainer, animated && { opacity: fadeAnim }]}>
-        {showIcon && (
-          <MaterialCommunityIcons 
-            name="rocket-launch" 
-            size={size === 'small' ? 14 : size === 'medium' ? 16 : 18} 
-            color={Colors.textMuted} 
-            style={styles.icon}
-          />
-        )}
-        <Text style={[styles.compactText, compactSizeStyles[size]]}>
-          {parts.join(' ')}
-        </Text>
-      </Animated.View>
-    );
-  };
-
-  const renderFull = () => {
-    const timeUnits = [
-      { label: 'Days', value: countdown.days },
-      { label: 'Hours', value: countdown.hours },
-      { label: 'Minutes', value: countdown.minutes },
-      { label: 'Seconds', value: countdown.seconds },
-    ];
-
-    return (
-      <Animated.View style={[styles.container, animated && { opacity: fadeAnim }]}>
-        {timeUnits.map((unit) => (
-          <View key={unit.label} style={styles.unitContainer}>
-            <Text style={[styles.value, sizeStyles[size].value]}>{unit.value}</Text>
-            <Text style={[styles.label, sizeStyles[size].label]}>{unit.label}</Text>
-          </View>
-        ))}
-      </Animated.View>
-    );
-  };
-
-  return format === 'compact' ? renderCompact() : renderFull();
+  return (
+    <View accessibilityLabel={label} style={styles.row}>
+      {groups.map((group) => (
+        <View key={group.unit} style={styles.group}>
+          <Text maxFontSizeMultiplier={1.4} style={styles.digit}>{group.value}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.unit}>{group.unit}</Text>
+        </View>
+      ))}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: 16,
+  },
+  group: {
     alignItems: 'center',
-    paddingVertical: 8,
+    minWidth: 48,
   },
-  unitContainer: {
-    alignItems: 'center',
-    minWidth: 50,
+  digit: {
+    ...type.countdown,
+    color: color.text,
   },
-  value: {
-    color: Colors.text,
-    fontWeight: '600',
+  unit: {
+    ...type.countdownUnit,
+    color: color.textTertiary,
   },
-  label: {
-    color: Colors.text,
-    marginTop: 4,
-    fontSize: 10,
-    opacity: 0.9,
-  },
-  compactContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  icon: {
-    marginRight: 6,
-  },
-  compactText: {
-    color: Colors.textMuted,
-    fontWeight: '500',
+  passed: {
+    ...type.title,
+    color: color.textSecondary,
   },
 });
-
-const sizeStyles = {
-  small: {
-    value: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-    },
-    label: {
-      fontSize: 9,
-    },
-  },
-  medium: {
-    value: {
-      fontSize: 24,
-      fontWeight: '700' as const,
-    },
-    label: {
-      fontSize: 10,
-    },
-  },
-  large: {
-    value: {
-      fontSize: 32,
-      fontWeight: '700' as const,
-    },
-    label: {
-      fontSize: 12,
-    },
-  },
-};
-
-const compactSizeStyles = {
-  small: {
-    fontSize: 12,
-  },
-  medium: {
-    fontSize: 14,
-  },
-  large: {
-    fontSize: 16,
-  },
-};
-

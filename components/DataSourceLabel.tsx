@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useApp } from '../context/AppContext';
 import { DataSource } from '../types';
-import { Colors } from '../constants/colors';
+import { color, type } from '../constants/theme';
 
 interface DataSourceLabelProps {
   source?: DataSource;
@@ -19,8 +19,6 @@ const getSourceDisplayName = (source?: DataSource, apiEnvironment?: 'dev' | 'pro
       return 'NASA NeoWs';
     case 'NASA_APOD':
       return 'NASA APOD';
-    case 'ISS_API':
-      return 'ISS API';
     case 'Other':
       return 'Other';
     default:
@@ -52,12 +50,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: color.hairline,
   },
   label: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '500',
+    ...type.caption,
+    color: color.textTertiary,
   },
 });
 

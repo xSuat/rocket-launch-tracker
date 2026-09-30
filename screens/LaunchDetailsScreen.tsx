@@ -1,1304 +1,402 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
   Image,
-  StyleSheet,
-  TouchableOpacity,
   Linking,
-  Share,
   Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Launch } from '../types';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import * as Calendar from 'expo-calendar';
+import { getCalendars } from 'expo-localization';
+import { color, space, type } from '../constants/theme';
 import { RootStackParamList } from '../types/navigation';
-import { launchAPI } from '../services/api';
+import { useLaunch } from '../hooks/useLaunch';
 import { useApp } from '../context/AppContext';
-import { useLaunch } from '../hooks';
-import { formatLaunchDate, getTimeUntilLaunch } from '../utils/dateUtils';
-import { CountdownTimer } from '../components/CountdownTimer';
-import { LoadingState } from '../components/LoadingState';
+import { useToast } from '../components/ui/Toast';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { Button } from '../components/ui/Button';
+import { IconButton } from '../components/ui/IconButton';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { Skeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ErrorState';
-import { MapSelectionModal } from '../components/MapSelectionModal';
-import { openLocationInMaps } from '../utils/mapUtils';
+import { CountdownTimer } from '../components/CountdownTimer';
 import { ReminderModal } from '../components/ReminderModal';
-import { MissionTimeline } from '../components/MissionTimeline';
-import { EngineLayout } from '../components/EngineLayout';
-import { RocketDetails, parseEngineLayout } from '../utils/rocketUtils';
-import { GlassCard, StatusBadge, GradientButton, DataSourceLabel } from '../components';
-import { isLaunchUpcoming, getStatusCategory, getStatusConfig } from '../components/ui/StatusBadge';
-import { Colors } from '../constants/colors';
+import { DataSourceLabel } from '../components/DataSourceLabel';
+import {
+  formatDateTime,
+  formatRelative,
+  formatUpdated,
+  isHourConfirmed,
+  precisionKind,
+} from '../utils/dateUtils';
+import { isUpcomingStatus, statusLabel } from '../utils/launchStatus';
+import { firstWatchUrl, heroImageUrl, imageCredit, shareText } from '../utils/launchMedia';
+import { hapticFavorite } from '../utils/haptics';
 
-type LaunchDetailsRouteProp = RouteProp<RootStackParamList, 'LaunchDetails'>;
-
-// Helper function to extract image URL from object or string
-const getImageUrl = (image: string | { image_url?: string } | null | undefined): string | null => {
-  if (!image) return null;
-  if (typeof image === 'string') return image;
-  if (typeof image === 'object' && image.image_url) return image.image_url;
-  return null;
-};
+type Nav = NativeStackNavigationProp<RootStackParamList, 'LaunchDetails'>;
+type Route = RouteProp<RootStackParamList, 'LaunchDetails'>;
 
 export const LaunchDetailsScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
-  const route = useRoute<LaunchDetailsRouteProp>();
-  const navigation = useNavigation();
-  const { launchId } = route.params;
-  const { isFavorite, addFavorite, removeFavorite, defaultMapApp, toggleProviderFollow, isProviderFollowed } = useApp();
-  
-  const { launch, loading: launchLoading, error: launchError, refetch } = useLaunch(launchId);
-  
-  const [rocketDetails, setRocketDetails] = useState<RocketDetails | null>(null);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
-  const [reminderModalVisible, setReminderModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'status' | 'timeline'>('details');
-  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+  const navigation = useNavigation<Nav>();
+  const { launchId } = useRoute<Route>().params;
+  const { launch, loading, refreshing, error, refetch } = useLaunch(launchId);
+  const { isFavorite, addFavorite, removeFavorite } = useApp();
+  const { showToast } = useToast();
+  const [reminderOpen, setReminderOpen] = useState(false);
 
-  const favorite = isFavorite(launchId);
+  const favorite = launch ? isFavorite(launch.id) : false;
 
-  // Effect to set initial hero image when launch loads
-  useEffect(() => {
-    if (launch) {
-        const launchImageUrl = getImageUrl(launch.image as any);
-        const initialHeroImage = launchImageUrl || launch.mission?.agencies?.[0]?.logo_url || null;
-        setHeroImageUrl(initialHeroImage);
-    }
-  }, [launch]);
-
-  // Effect to load rocket details
-  useEffect(() => {
-    if (launch?.rocket?.configuration?.id) {
-        const configId = launch.rocket.configuration.id;
-        const providerName = launch.launch_service_provider?.name;
-        const rocketName = launch.rocket.configuration.name;
-
-        // Use Promise.allSettled to load rocket config and SpaceX data in parallel
-        Promise.allSettled([
-          launchAPI.getRocketConfiguration(configId),
-          providerName === 'SpaceX' 
-            ? launchAPI.getSpaceXRocketData(rocketName.toLowerCase().replace(/\s+/g, '-'))
-            : Promise.resolve(null)
-        ]).then(([rocketConfigResult, spacexDataResult]) => {
-          const rocketConfig = rocketConfigResult.status === 'fulfilled' ? rocketConfigResult.value : null;
-          const spacexData = spacexDataResult.status === 'fulfilled' ? spacexDataResult.value : null;
-          
-          if (!rocketConfig) return;
-          
-          // Combine LL2 and SpaceX data
-          const rocketImageUrl = rocketConfig.image_url || spacexData?.flickr_images?.[0] || null;
-          
-          const combined: RocketDetails = {
-            id: rocketConfig.id,
-            name: rocketConfig.name,
-            family: rocketConfig.family || '',
-            full_name: rocketConfig.full_name || rocketConfig.name,
-            variant: rocketConfig.variant,
-            description: rocketConfig.description,
-            min_stage: rocketConfig.min_stage,
-            max_stage: rocketConfig.max_stage,
-            length: rocketConfig.length || spacexData?.height?.meters,
-            diameter: rocketConfig.diameter || spacexData?.diameter?.meters,
-            launch_mass: rocketConfig.launch_mass || spacexData?.mass?.kg,
-            leo_capacity: rocketConfig.leo_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'leo')?.kg,
-            gto_capacity: rocketConfig.gto_capacity || spacexData?.payload_weights?.find((p: any) => p.id === 'gto')?.kg,
-            to_thrust: rocketConfig.to_thrust || spacexData?.first_stage?.thrust_sea_level?.kN,
-            image_url: rocketImageUrl,
-            info_url: rocketConfig.info_url,
-            wiki_url: rocketConfig.wiki_url,
-            first_flight: rocketConfig.first_flight || spacexData?.first_flight,
-            boosters: spacexData?.boosters,
-            cost_per_launch: spacexData?.cost_per_launch,
-            success_rate_pct: spacexData?.success_rate_pct,
-            stages: spacexData?.stages,
-            engines: spacexData?.engines ? {
-              number: spacexData.engines.number,
-              type: spacexData.engines.type,
-              version: spacexData.engines.version,
-              layout: spacexData.engines.layout,
-              isp: spacexData.engines.isp,
-              thrust_sea_level: spacexData.engines.thrust_sea_level,
-              thrust_vacuum: spacexData.engines.thrust_vacuum,
-            } : undefined,
-            landing_legs: spacexData?.landing_legs,
-            payload_weights: spacexData?.payload_weights,
-          };
-          
-          setRocketDetails(combined);
-          
-          if (rocketImageUrl && !heroImageUrl) {
-            setHeroImageUrl(rocketImageUrl);
-          }
-        }).catch(() => {
-          // Silently fail - rocket details are optional
-        });
-    }
-  }, [launch?.rocket?.configuration?.id]);
-
-  const handleToggleFavorite = async () => {
-    if (favorite) {
-      await removeFavorite(launchId);
-    } else {
-      await addFavorite(launchId);
-    }
-  };
-
-  const isApiUrl = (url: string): boolean => {
-    if (!url) return true;
-    return url.includes('ll.thespacedevs.com') || 
-           url.includes('thespacedevs.com') || 
-           url.includes('/api/') ||
-           url.startsWith('https://ll') ||
-           url.startsWith('https://lldev');
-  };
-
-  const getManufacturerWebsite = (manufacturerName?: string, providerName?: string): string | null => {
-    const name = manufacturerName || providerName || '';
-    const lowerName = name.toLowerCase();
-    
-    // Common manufacturer/provider websites
-    if (lowerName.includes('spacex')) return 'https://www.spacex.com';
-    if (lowerName.includes('nasa')) return 'https://www.nasa.gov';
-    if (lowerName.includes('blue origin') || lowerName.includes('blueorigin')) return 'https://www.blueorigin.com';
-    if (lowerName.includes('ula') || lowerName.includes('united launch alliance')) return 'https://www.ulalaunch.com';
-    if (lowerName.includes('ariane') || lowerName.includes('arianespace')) return 'https://www.arianespace.com';
-    if (lowerName.includes('rocket lab') || lowerName.includes('rocketlab')) return 'https://www.rocketlabusa.com';
-    if (lowerName.includes('northrop') || lowerName.includes('grumman')) return 'https://www.northropgrumman.com';
-    if (lowerName.includes('boeing')) return 'https://www.boeing.com';
-    if (lowerName.includes('lockheed')) return 'https://www.lockheedmartin.com';
-    if (lowerName.includes('roscosmos') || lowerName.includes('russia')) return 'https://www.roscosmos.ru';
-    if (lowerName.includes('cnsa') || lowerName.includes('china')) return 'https://www.cnsa.gov.cn';
-    if (lowerName.includes('isro') || lowerName.includes('india')) return 'https://www.isro.gov.in';
-    if (lowerName.includes('jaxa') || lowerName.includes('japan')) return 'https://global.jaxa.jp';
-    if (lowerName.includes('nuri') || lowerName.includes('kslv') || lowerName.includes('korea') || lowerName.includes('kari') || lowerName.includes('south korea')) return 'https://www.kari.re.kr';
-    
-    return null;
-  };
-
-  const getLaunchWebsiteUrl = (): string | null => {
-    if (!launch) return null;
-    
-    const manufacturerWebsite = getManufacturerWebsite(
-      launch.rocket?.configuration?.name,
-      launch.launch_service_provider?.name
-    );
-    if (manufacturerWebsite) return manufacturerWebsite;
-    
-    if (rocketDetails) {
-      if (rocketDetails.info_url && !isApiUrl(rocketDetails.info_url)) return rocketDetails.info_url;
-      if (rocketDetails.wiki_url && !isApiUrl(rocketDetails.wiki_url)) return rocketDetails.wiki_url;
-    }
-    
-    if (launch.program && launch.program.length > 0) {
-      for (const program of launch.program) {
-        if (program.info_url && !isApiUrl(program.info_url)) return program.info_url;
-      }
-    }
-    
-    if (launch.pad?.info_url && !isApiUrl(launch.pad.info_url)) return launch.pad.info_url;
-    
-    return null;
-  };
-
-  const handleShare = async () => {
+  const share = async () => {
     if (!launch) return;
-    const websiteUrl = getLaunchWebsiteUrl();
-    if (!websiteUrl) return;
-    
+    const when = formatDateTime(launch.net, launch.net_precision);
+    await Share.share({ message: shareText(launch, when) });
+  };
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <IconButton
+            name={favorite ? 'heart' : 'heart-outline'}
+            accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'}
+            selected={favorite}
+            onPress={async () => {
+              if (!launch) return;
+              hapticFavorite();
+              if (favorite) {
+                await removeFavorite(launch.id);
+                showToast('Removed from favorites', () => addFavorite(launch.id));
+              } else {
+                await addFavorite(launch.id);
+                showToast('Saved to favorites', () => removeFavorite(launch.id));
+              }
+            }}
+          />
+          <IconButton name="share-outline" accessibilityLabel="Share launch" onPress={share} />
+        </View>
+      ),
+    });
+  }, [navigation, favorite, launch, addFavorite, removeFavorite, showToast]);
+
+  if (loading && !launch) {
+    return (
+      <View style={styles.screen}>
+        <Skeleton rows={4} />
+      </View>
+    );
+  }
+
+  if (error && !launch) {
+    return (
+      <View style={styles.screen}>
+        <ErrorState message={error} onRetry={refetch} />
+      </View>
+    );
+  }
+
+  if (!launch) return null;
+
+  const image = heroImageUrl(launch);
+  const credit = imageCredit(launch);
+  const provider = launch.launch_service_provider?.name || 'Unknown provider';
+  const vehicle = launch.rocket?.configuration?.name;
+  const when = formatDateTime(launch.net, launch.net_precision);
+  const kind = precisionKind(launch.net_precision);
+  const relative = kind === 'time' ? formatRelative(launch.net) : kind === 'day' ? 'Time TBD' : '';
+  const upcoming = isUpcomingStatus(launch.status?.id);
+  const passed = new Date(launch.net).getTime() <= Date.now();
+  const watch = firstWatchUrl(launch);
+  const links = [...(launch.vid_urls || []), ...(launch.info_urls || [])].filter((item) => item?.url);
+  const timeline = (launch.timeline || []).filter((item) => item?.type?.description || item?.relative_time);
+
+  const addToCalendar = async () => {
+    if (Platform.OS === 'web') return;
+    const start = new Date(launch.net);
+    const allDay = kind !== 'time';
     try {
-      await Share.share({
-        message: `Check out this launch: ${launch.name}\n${websiteUrl}`,
+      await Calendar.createEventInCalendarAsync({
         title: launch.name,
+        startDate: start,
+        endDate: new Date(start.getTime() + 60 * 60 * 1000),
+        allDay,
+        location: launch.pad?.name,
+        notes: [provider, when].filter(Boolean).join('\n'),
+        timeZone: getCalendars()[0]?.timeZone || undefined,
       });
-    } catch (error) {
-      // Silently fail
+    } catch {
+      showToast('Could not open the calendar');
     }
   };
 
-  const openLink = (url: string) => {
-    Linking.openURL(url).catch(() => {});
+  const openMaps = () => {
+    const lat = launch.pad?.latitude;
+    const lng = launch.pad?.longitude;
+    if (!lat || !lng) return;
+    const url = `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(launch.pad?.name || launch.name)}`;
+    Linking.openURL(url);
   };
-
-  const handleOpenInMaps = async () => {
-    if (!launch || !launch.pad?.latitude || !launch.pad?.longitude) return;
-    
-    await openLocationInMaps(
-      launch.pad.latitude,
-      launch.pad.longitude,
-      defaultMapApp,
-      () => setMapModalVisible(true)
-    );
-  };
-
-  if (launchLoading) {
-    return <LoadingState message="Loading launch details..." />;
-  }
-
-  if (launchError) {
-    return (
-      <ErrorState 
-        message={launchError} 
-        onRetry={refetch}
-        onBack={() => navigation.goBack()}
-      />
-    );
-  }
-
-  if (!launch) {
-    return <LoadingState message="Loading launch details..." />;
-  }
-
-  const statusAbbrev = launch.status?.abbrev || '';
-  const isUpcoming = isLaunchUpcoming(statusAbbrev);
 
   return (
-    <LinearGradient
-      colors={Colors.backgroundGradient as any}
-      style={styles.container}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={refetch}
+          tintColor={color.text}
+          colors={[color.text]}
+          progressBackgroundColor={color.bg}
+        />
+      }
     >
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Back Button */}
-        <TouchableOpacity
-          style={[styles.backButton, { top: Math.max(insets.top, 16) }]}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialIcons name="chevron-left" size={24} color={Colors.text} />
-        </TouchableOpacity>
-
-        {/* Hero Image */}
-        <View style={styles.heroContainer}>
-          {heroImageUrl ? (
-            <Image 
-              source={{ uri: heroImageUrl }} 
-              style={styles.heroImage} 
-              resizeMode="cover"
-              onError={() => {
-                // If image fails to load, try fallback
-                const fallbackUrl = rocketDetails?.image_url || launch.mission?.agencies?.[0]?.logo_url;
-                if (fallbackUrl && fallbackUrl !== heroImageUrl) {
-                  setHeroImageUrl(fallbackUrl);
-                } else {
-                  setHeroImageUrl(null);
-                }
-              }}
-            />
-          ) : (
-            <LinearGradient
-              colors={[Colors.primaryDark, Colors.primary]}
-              style={styles.heroImagePlaceholder}
-            >
-              <MaterialIcons name="rocket-launch" size={80} color={Colors.text} />
-            </LinearGradient>
-          )}
-          <LinearGradient
-            colors={['transparent', Colors.background]}
-            style={styles.heroGradient}
-          />
-          {/* Favorite Button */}
-          <TouchableOpacity 
-            onPress={handleToggleFavorite} 
-            style={[styles.favoriteButton, { top: Math.max(insets.top, 16) }]}
-          >
-            <MaterialCommunityIcons 
-              name={favorite ? "heart" : "heart-outline"} 
-              size={24} 
-              color={favorite ? "#FF6B6B" : Colors.text} 
-            />
-          </TouchableOpacity>
+      {image ? (
+        <Image
+          source={{ uri: image }}
+          style={styles.hero}
+          accessible={!!credit}
+          accessibilityLabel={credit || undefined}
+        />
+      ) : (
+        <View style={styles.hero} accessible={false}>
+          <Ionicons name="rocket-outline" size={32} color={color.textTertiary} />
         </View>
-        
-        {/* Title Card */}
-        <View style={styles.titleCardContainer}>
-          <GlassCard style={styles.titleCard}>
-            <Text style={styles.missionName}>{launch.name}</Text>
-          </GlassCard>
-        </View>
-
-        {isUpcoming && (
-          <View style={styles.countdownSection}>
-            <CountdownTimer 
-              launchDate={launch.net} 
-              size="medium" 
-              format="compact"
-              showIcon={true}
-              animated={true}
-            />
-            <GradientButton
-              title="Set Reminder"
-              onPress={() => setReminderModalVisible(true)}
-              icon={<MaterialIcons name="notifications" size={20} color={Colors.text} />}
-            />
-          </View>
-        )}
-
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          {Platform.OS === 'ios' ? (
-            <BlurView intensity={20} tint="dark" style={styles.tabsBlur}>
-              <View style={styles.tabsContent}>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'details' && styles.tabActive]}
-                  onPress={() => setActiveTab('details')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'details' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <Text style={styles.tabTextActive}>Details</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={styles.tabText}>Details</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'status' && styles.tabActive]}
-                  onPress={() => setActiveTab('status')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'status' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <View style={styles.tabContent}>
-                        <Text style={styles.tabTextActive}>Status</Text>
-                        {launch.status && (
-                          <StatusBadge status={launch.status.abbrev} size="small" />
-                        )}
-                      </View>
-                    </LinearGradient>
-                  ) : (
-                    <View style={styles.tabContent}>
-                      <Text style={styles.tabText}>Status</Text>
-                      {launch.status && (
-                        <StatusBadge status={launch.status.abbrev} size="small" />
-                      )}
-                    </View>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'timeline' && styles.tabActive]}
-                  onPress={() => setActiveTab('timeline')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'timeline' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <Text style={styles.tabTextActive}>Timeline</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={styles.tabText}>Timeline</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </BlurView>
-          ) : (
-            <View style={styles.tabsBlurAndroid}>
-              <View style={styles.tabsContent}>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'details' && styles.tabActive]}
-                  onPress={() => setActiveTab('details')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'details' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <Text style={styles.tabTextActive}>Details</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={styles.tabText}>Details</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'status' && styles.tabActive]}
-                  onPress={() => setActiveTab('status')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'status' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <View style={styles.tabContent}>
-                        <Text style={styles.tabTextActive}>Status</Text>
-                        {launch.status && (
-                          <StatusBadge status={launch.status.abbrev} size="small" />
-                        )}
-                      </View>
-                    </LinearGradient>
-                  ) : (
-                    <View style={styles.tabContent}>
-                      <Text style={styles.tabText}>Status</Text>
-                      {launch.status && (
-                        <StatusBadge status={launch.status.abbrev} size="small" />
-                      )}
-                    </View>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'timeline' && styles.tabActive]}
-                  onPress={() => setActiveTab('timeline')}
-                  activeOpacity={0.7}
-                >
-                  {activeTab === 'timeline' ? (
-                    <LinearGradient
-                      colors={[Colors.primary, Colors.pink]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.tabGradient}
-                    >
-                      <Text style={styles.tabTextActive}>Timeline</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={styles.tabText}>Timeline</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Tab Content */}
-        {activeTab === 'details' ? (
-          <>
-        <GlassCard style={styles.section}>
-          <Text style={styles.sectionTitle}>Launch Information</Text>
-          <InfoRow label="Date" value={formatLaunchDate(launch.net)} icon="event" />
-        {launch.window_start && (
-          <InfoRow label="Window Start" value={formatLaunchDate(launch.window_start)} />
-        )}
-        {launch.window_end && (
-          <InfoRow label="Window End" value={formatLaunchDate(launch.window_end)} />
-        )}
-        {launch.pad?.location?.name && (
-          <InfoRow label="Location" value={launch.pad.location.name} icon="place" />
-        )}
-        {launch.pad?.location?.country_code && (
-          <InfoRow label="Country" value={launch.pad.location.country_code} />
-        )}
-        {launch.pad?.name && (
-          <InfoRow label="Pad" value={launch.pad.name} />
-        )}
-        {launch.pad?.latitude && launch.pad?.longitude && (
-          <InfoRow 
-            label="Coordinates" 
-            value={`${launch.pad.latitude}, ${launch.pad.longitude}`} 
-          />
-        )}
-        {launch.probability && (
-          <InfoRow label="Probability" value={`${launch.probability}%`} />
-        )}
-        </GlassCard>
-
-        <GlassCard style={styles.section}>
-          <Text style={styles.sectionTitle}>Location</Text>
-        {launch.pad?.map_image && (
-          <Image 
-            source={{ uri: launch.pad.map_image }} 
-            style={styles.mapImage} 
-            resizeMode="cover"
-          />
-        )}
-        {launch.pad?.latitude && launch.pad?.longitude && (
-          <>
-            <View style={styles.coordinatesContainer}>
-              <Text style={styles.coordinatesLabel}>Coordinates:</Text>
-              <Text style={styles.coordinatesValue}>
-                {launch.pad.latitude}, {launch.pad.longitude}
-              </Text>
-            </View>
-            <GradientButton
-              title="Open in Maps"
-              onPress={handleOpenInMaps}
-              icon={<MaterialCommunityIcons name="map" size={20} color={Colors.text} />}
-            />
-          </>
-        )}
-        {!launch.pad?.map_image && !launch.pad?.latitude && (
-          <Text style={styles.noLocationText}>Location information not available</Text>
-        )}
-        </GlassCard>
-
-        {launch.rocket?.configuration && (
-          <GlassCard style={styles.section}>
-          <Text style={styles.sectionTitle}>Rocket</Text>
-          {launch.rocket.configuration.full_name && (
-            <InfoRow label="Name" value={launch.rocket.configuration.full_name} />
-          )}
-          {launch.rocket.configuration.family && (
-            <InfoRow label="Family" value={launch.rocket.configuration.family} />
-          )}
-          {launch.rocket.configuration.variant && (
-            <InfoRow label="Variant" value={launch.rocket.configuration.variant} />
-          )}
-          {rocketDetails?.first_flight && (
-            <InfoRow label="First Flight" value={new Date(rocketDetails.first_flight).toLocaleDateString()} />
-          )}
-          {rocketDetails?.last_flight && (
-            <InfoRow label="Last Flight" value={new Date(rocketDetails.last_flight).toLocaleDateString()} />
-          )}
-          </GlassCard>
-        )}
-
-        {rocketDetails && (
-          <>
-            <GlassCard style={styles.section}>
-              <Text style={styles.sectionTitle}>Technical Specs</Text>
-            {rocketDetails.length && (
-              <InfoRow label="Length" value={`${rocketDetails.length.toFixed(1)} m`} />
-            )}
-            {rocketDetails.diameter && (
-              <InfoRow label="Diameter" value={`${rocketDetails.diameter.toFixed(2)} m`} />
-            )}
-            {rocketDetails.launch_mass && (
-              <InfoRow label="Launch Mass" value={`${(rocketDetails.launch_mass / 1000).toFixed(1)} t`} />
-            )}
-            {rocketDetails.stages && (
-              <InfoRow label="Stages" value={String(rocketDetails.stages)} />
-            )}
-            {rocketDetails.engines?.number && (
-              <InfoRow 
-                label="Engines" 
-                value={`${rocketDetails.engines.number} × ${typeof rocketDetails.engines.type === 'object' ? (rocketDetails.engines.type as any)?.name || 'Unknown' : rocketDetails.engines.type || 'Unknown'}`} 
-              />
-            )}
-            {rocketDetails.to_thrust && (
-              <InfoRow label="Thrust (SL)" value={`${(rocketDetails.to_thrust / 1000).toFixed(1)} MN`} />
-            )}
-            {rocketDetails.success_rate_pct && (
-              <InfoRow label="Success Rate" value={`${rocketDetails.success_rate_pct}%`} />
-            )}
-            {rocketDetails.cost_per_launch && (
-              <InfoRow label="Cost per Launch" value={`$${(rocketDetails.cost_per_launch / 1000000).toFixed(1)}M`} />
-            )}
-            </GlassCard>
-
-            {rocketDetails.engines && (
-              <GlassCard style={styles.section}>
-                <Text style={styles.sectionTitle}>Engine Layout</Text>
-                <EngineLayout layout={parseEngineLayout(rocketDetails)} />
-              </GlassCard>
-            )}
-
-            {rocketDetails.payload_weights && rocketDetails.payload_weights.length > 0 && (
-              <GlassCard style={styles.section}>
-                <Text style={styles.sectionTitle}>Payload Capacity</Text>
-                {rocketDetails.payload_weights.map((payload, index) => (
-                  <InfoRow
-                    key={payload.id || index}
-                    label={payload.name}
-                    value={`${(payload.kg / 1000).toFixed(1)} t (${(payload.lb / 1000).toFixed(1)} klb)`}
-                  />
-                ))}
-              </GlassCard>
-            )}
-
-            {rocketDetails.booster_flights && rocketDetails.booster_flights.length > 0 && (
-              <GlassCard style={styles.section}>
-                <Text style={styles.sectionTitle}>Booster History</Text>
-                {rocketDetails.booster_flights.map((flight, index) => (
-                  <View key={flight.id || index} style={styles.boosterFlight}>
-                    <View style={styles.boosterFlightHeader}>
-                      <Text style={styles.boosterFlightName}>{flight.name}</Text>
-                      <Text style={styles.boosterFlightStatus}>
-                        {flight.success ? '✓ Success' : '✗ Failure'}
-                      </Text>
-                    </View>
-                    <Text style={styles.boosterFlightDate}>
-                      Flight #{flight.flight_number} • {new Date(flight.date).toLocaleDateString()}
-                      {flight.reused && ' • Reused'}
-                    </Text>
-                  </View>
-                ))}
-              </GlassCard>
-            )}
-          </>
-        )}
-
-        <GlassCard style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Agency</Text>
-            <TouchableOpacity
-              style={styles.followButton}
-              onPress={() => toggleProviderFollow(
-                String(launch.launch_service_provider.id),
-                launch.launch_service_provider.name
-              )}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons
-                name={isProviderFollowed(String(launch.launch_service_provider.id)) ? 'notifications' : 'notifications-none'}
-                size={20}
-                color={isProviderFollowed(String(launch.launch_service_provider.id)) ? Colors.primary : Colors.textMuted}
-              />
-              <Text style={[
-                styles.followButtonText,
-                isProviderFollowed(String(launch.launch_service_provider.id)) && styles.followButtonTextActive
-              ]}>
-                {isProviderFollowed(String(launch.launch_service_provider.id)) ? 'Following' : 'Follow'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <InfoRow label="Name" value={typeof launch.launch_service_provider.name === 'object' ? (launch.launch_service_provider.name as any)?.name || String(launch.launch_service_provider.name) : launch.launch_service_provider.name} />
-          {launch.launch_service_provider.country_code && (
-            <InfoRow label="Country" value={launch.launch_service_provider.country_code} />
-          )}
-          {launch.launch_service_provider.type && (
-            <InfoRow label="Type" value={launch.launch_service_provider.type} />
-          )}
-        </GlassCard>
-
-        {launch.mission && (
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>Mission</Text>
-            {launch.mission.description && (
-              <Text style={styles.description}>{launch.mission.description}</Text>
-            )}
-            {launch.mission.type && (
-              <InfoRow label="Type" value={launch.mission.type} />
-            )}
-            {launch.mission.orbit?.name && (
-              <InfoRow label="Orbit" value={launch.mission.orbit.name} />
-            )}
-          </GlassCard>
-        )}
-
-        {launch.program && launch.program.length > 0 && (
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>Program</Text>
-            {launch.program.map((program, index) => (
-              <View key={program.id || index} style={styles.programItem}>
-                <Text style={styles.programName}>{program.name}</Text>
-                {program.description && (
-                  <Text style={styles.programDescription}>{program.description}</Text>
-                )}
-              </View>
-            ))}
-          </GlassCard>
-        )}
-
-        <View style={styles.actions}>
-          <GradientButton
-            title="Share"
-            onPress={handleShare}
-            icon={<MaterialIcons name="share" size={20} color={Colors.text} />}
-          />
-          {getLaunchWebsiteUrl() && (
-            <GradientButton
-              title="View Details"
-              onPress={() => {
-                const websiteUrl = getLaunchWebsiteUrl();
-                if (websiteUrl) {
-                  openLink(websiteUrl);
-                }
-              }}
-              variant="secondary"
-            />
-          )}
-        </View>
-
+      )}
+      <View style={styles.summary}>
+        <StatusBadge statusId={launch.status?.id} status={launch.status?.name} size="medium" />
+        <Text style={styles.name}>{launch.name}</Text>
+        <Text style={styles.meta}>{vehicle ? `${provider} · ${vehicle}` : provider}</Text>
+        <Text style={styles.when}>{when}</Text>
+        {relative ? <Text style={styles.relative}>{relative}</Text> : null}
+        {launch.pad?.name ? <Text style={styles.pad}>{launch.pad.name}</Text> : null}
+        {upcoming && kind === 'time' ? <CountdownTimer date={launch.net} /> : null}
         <DataSourceLabel source={launch.source} />
-          </>
-        ) : activeTab === 'status' ? (
-          <StatusTabContent launch={launch} />
-        ) : (
-          <TimelineTabContent launch={launch} />
-        )}
-      </ScrollView>
-
-      {launch.pad?.latitude && launch.pad?.longitude && (
-        <MapSelectionModal
-          visible={mapModalVisible}
-          onClose={() => setMapModalVisible(false)}
-          latitude={launch.pad.latitude}
-          longitude={launch.pad.longitude}
-        />
-      )}
-      {isUpcoming && (
-        <ReminderModal
-          visible={reminderModalVisible}
-          onClose={() => setReminderModalVisible(false)}
-          launchId={launch.id}
-          launchName={launch.name}
-          launchDate={launch.net}
-        />
-      )}
-    </LinearGradient>
-  );
-};
-
-const TimelineTabContent: React.FC<{ launch: Launch }> = ({ launch }) => {
-  if (!launch.mission) {
-    return (
-      <GlassCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Mission Timeline</Text>
-        <Text style={styles.noTimelineText}>No mission timeline available for this launch.</Text>
-      </GlassCard>
-    );
-  }
-
-  return (
-    <GlassCard style={styles.section}>
-      <MissionTimeline launch={launch} />
-    </GlassCard>
-  );
-};
-
-const StatusTabContent: React.FC<{ launch: Launch }> = ({ launch }) => {
-  const statusAbbrev = launch.status?.abbrev || '';
-  const statusConfig = getStatusConfig(statusAbbrev);
-  const statusCategory = getStatusCategory(statusAbbrev);
-  
-  // Status schema examples by category
-  const statusSchema = {
-    success: ['GO', 'Success', 'Launched', 'Landed'],
-    failed: ['Failure', 'Partial Failure', 'Aborted', 'Scrubbed'],
-    pending: ['TBD', 'TBC', 'Hold', 'Delayed', 'Postponed'],
-    active: ['Active', 'In Flight', 'In Progress', 'Launching', 'Testing'],
-    warning: ['Concern', 'Issue', 'Problem', 'Risk'],
-    info: ['Scheduled', 'Planned', 'Confirmed', 'Announced'],
-    neutral: ['Unknown', 'Other'],
-  };
-
-  return (
-    <View>
-      {/* Current Status */}
-      <GlassCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Current Status</Text>
-        <View style={styles.statusDisplay}>
-          <StatusBadge status={statusAbbrev} size="large" />
-          {launch.status?.name && (
-            <Text style={styles.statusName}>{launch.status.name}</Text>
-          )}
-          {launch.status?.description && (
-            <Text style={styles.statusDescription}>{launch.status.description}</Text>
-          )}
-          <View style={styles.statusCategoryBadge}>
-            <Text style={styles.statusCategoryLabel}>Category:</Text>
-            <View style={[styles.categoryIndicator, { backgroundColor: statusConfig.bg }]}>
-              <Text style={[styles.categoryText, { color: statusConfig.text }]}>
-                {statusCategory.charAt(0).toUpperCase() + statusCategory.slice(1)}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </GlassCard>
-
-      {/* Status Schema */}
-      <GlassCard style={styles.section}>
-        <Text style={styles.sectionTitle}>Status Schema</Text>
-        <Text style={styles.schemaDescription}>
-          Launch statuses are categorized to help you understand the current state of a launch.
-        </Text>
-        
-        {Object.entries(statusSchema).map(([category, examples]) => {
-          const categoryConfig = getStatusConfig(examples[0]);
-          const isCurrentCategory = category === statusCategory;
-          
-          return (
-            <View key={category} style={[styles.schemaCategory, isCurrentCategory && styles.schemaCategoryActive]}>
-              <View style={styles.schemaCategoryHeader}>
-                <View style={[styles.schemaCategoryIndicator, { backgroundColor: categoryConfig.bg }]}>
-                  <Text style={[styles.schemaCategoryTitle, { color: categoryConfig.text }]}>
-                    {category.charAt(0).toUpperCase() + category.slice(1)}
-                  </Text>
-                </View>
-                {isCurrentCategory && (
-                  <View style={styles.currentBadge}>
-                    <Text style={styles.currentBadgeText}>Current</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.schemaExamples}>
-                {examples.map((example, index) => (
-                  <StatusBadge
-                    key={index}
-                    status={example}
-                    size="small"
-                    style={styles.schemaBadge}
-                  />
-                ))}
-              </View>
-            </View>
-          );
-        })}
-      </GlassCard>
-
-      {/* Status Information */}
-      {launch.status && (
-        <GlassCard style={styles.section}>
-          <Text style={styles.sectionTitle}>Status Information</Text>
-          {launch.status.name && (
-            <InfoRow label="Status Name" value={launch.status.name} />
-          )}
-          {launch.status.abbrev && (
-            <InfoRow label="Abbreviation" value={launch.status.abbrev} />
-          )}
-          {launch.status.description && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Description</Text>
-              <Text style={styles.infoValueDescription}>{launch.status.description}</Text>
-            </View>
-          )}
-        </GlassCard>
-      )}
-    </View>
-  );
-};
-
-const InfoRow: React.FC<{ label: string; value: string | number | null | undefined; icon?: string }> = ({ label, value, icon }) => {
-  // Convert value to string safely - handle objects, null, undefined
-  const displayValue = value === null || value === undefined 
-    ? 'N/A' 
-    : typeof value === 'object' 
-      ? (value as any)?.name || (value as any)?.id || JSON.stringify(value)
-      : String(value);
-  
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoLabelContainer}>
-        {icon && (
-          <MaterialIcons 
-            name={icon as any} 
-            size={18} 
-            color={Colors.primary} 
-            style={styles.infoIcon} 
-          />
-        )}
-        <Text style={styles.infoLabel}>{label}</Text>
       </View>
-      <Text style={styles.infoValue}>{displayValue}</Text>
-    </View>
+      <View style={styles.actions}>
+        {upcoming ? (
+          <Button
+            label={passed ? 'Window passed' : 'Remind me'}
+            onPress={() => setReminderOpen(true)}
+            disabled={passed}
+            style={styles.action}
+          />
+        ) : null}
+        {Platform.OS !== 'web' ? (
+          <Button label="Add to calendar" variant="secondary" onPress={addToCalendar} style={styles.action} />
+        ) : null}
+        {watch ? (
+          <Button
+            label={launch.webcast_live ? 'Watch live' : 'Watch'}
+            variant="secondary"
+            onPress={() => Linking.openURL(watch.url)}
+            style={styles.action}
+          />
+        ) : null}
+      </View>
+
+      {links.length > 0 ? (
+        <View>
+          <SectionHeader title="Watch" />
+          {links.map((link) => (
+            <Pressable
+              key={link.url}
+              accessibilityRole="link"
+              accessibilityLabel={link.title || link.url}
+              onPress={() => Linking.openURL(link.url)}
+              style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+            >
+              <Ionicons name={link === watch ? 'play-outline' : 'open-outline'} size={18} color={color.text} />
+              <View style={styles.linkText}>
+                <Text style={styles.linkTitle}>{link.title || link.publisher || 'Link'}</Text>
+                {link.publisher ? <Text style={styles.linkMeta}>{link.publisher}</Text> : null}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <SectionHeader title="Status" />
+      <View style={styles.block}>
+        <Text style={styles.body}>{launch.status?.description || statusLabel(launch.status?.id, launch.status?.name)}</Text>
+        {typeof launch.probability === 'number' ? (
+          <Fact label="Probability" value={`${launch.probability}%`} />
+        ) : null}
+        {launch.weather_concerns ? <Fact label="Weather" value={launch.weather_concerns} /> : null}
+        {launch.failreason ? <Fact label="Failure" value={launch.failreason} /> : null}
+        {launch.last_updated ? <Text style={styles.relative}>{formatUpdated(launch.last_updated)}</Text> : null}
+        {!isHourConfirmed(launch.net_precision) ? (
+          <Text style={styles.relative}>The launch time isn't confirmed yet.</Text>
+        ) : null}
+      </View>
+
+      {timeline.length > 0 ? (
+        <View>
+          <SectionHeader title="Timeline" />
+          {timeline.map((item, index) => (
+            <View key={`${item.relative_time}-${index}`} style={styles.linkRow}>
+              <Text style={styles.timeCol}>{item.relative_time || '—'}</Text>
+              <Text style={styles.body}>{item.type?.description || item.type?.name}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <SectionHeader title="Mission" />
+      <View style={styles.block}>
+        {launch.mission?.description ? <Text style={styles.body}>{launch.mission.description}</Text> : null}
+        {launch.mission?.orbit?.name ? <Fact label="Orbit" value={launch.mission.orbit.name} /> : null}
+        {launch.pad?.location?.name ? <Fact label="Location" value={launch.pad.location.name} /> : null}
+        {launch.window_start ? <Fact label="Window opens" value={formatDateTime(launch.window_start, launch.net_precision)} /> : null}
+        {launch.window_end ? <Fact label="Window closes" value={formatDateTime(launch.window_end, launch.net_precision)} /> : null}
+        {launch.pad?.latitude && launch.pad?.longitude ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open in Maps"
+            onPress={openMaps}
+            style={styles.maps}
+          >
+            <Ionicons name="map-outline" size={18} color={color.text} />
+            <Text style={styles.linkTitle}>Open in Maps</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <ReminderModal
+        visible={reminderOpen}
+        launchId={launch.id}
+        launchName={launch.name}
+        launchDate={launch.net}
+        precision={launch.net_precision}
+        onClose={() => setReminderOpen(false)}
+      />
+    </ScrollView>
   );
 };
+
+const Fact = ({ label, value }: { label: string; value: string }) => (
+  <View style={styles.fact}>
+    <Text style={styles.factLabel}>{label}</Text>
+    <Text style={styles.factValue}>{value}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   content: {
-    paddingBottom: 32,
+    paddingBottom: space.s32,
   },
-  backButton: {
-    position: 'absolute',
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+  headerActions: {
+    flexDirection: 'row',
   },
-  heroContainer: {
+  hero: {
     width: '100%',
-    height: 320,
-    position: 'relative',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: Colors.cardSolid,
-  },
-  heroImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 100,
-  },
-  favoriteButton: {
-    position: 'absolute',
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  titleCardContainer: {
-    marginTop: -32,
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  titleCard: {
-    padding: 24,
-  },
-  missionName: {
-    color: Colors.text,
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  tabsContainer: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  tabsBlur: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  tabsBlurAndroid: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  tabsContent: {
-    flexDirection: 'row',
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    aspectRatio: 16 / 9,
+    backgroundColor: color.bgMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabActive: {
-    // Active state handled by gradient
+  summary: {
+    paddingHorizontal: space.s20,
+    paddingTop: space.s16,
+    gap: space.s8,
   },
-  tabGradient: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  name: {
+    ...type.title,
+    color: color.text,
   },
-  tabContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  meta: {
+    ...type.subhead,
+    color: color.textSecondary,
   },
-  tabText: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
+  when: {
+    ...type.subhead,
+    color: color.text,
+    fontVariant: ['tabular-nums'],
   },
-  tabTextActive: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: '700',
+  relative: {
+    ...type.footnote,
+    color: color.textTertiary,
   },
-  statusDisplay: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusName: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  statusDescription: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  statusCategoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  statusCategoryLabel: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  categoryIndicator: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  schemaDescription: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  schemaCategory: {
-    marginBottom: 20,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  schemaCategoryActive: {
-    borderColor: Colors.primary,
-    borderWidth: 2,
-    backgroundColor: `${Colors.primary}10`,
-  },
-  schemaCategoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  schemaCategoryIndicator: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  schemaCategoryTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  currentBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: Colors.primary,
-  },
-  currentBadgeText: {
-    color: Colors.text,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  schemaExamples: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  schemaBadge: {
-    marginBottom: 0,
-  },
-  infoValueDescription: {
-    color: Colors.text,
-    fontSize: 14,
-    flex: 2,
-    textAlign: 'right',
-    fontWeight: '400',
-    lineHeight: 20,
-  },
-  countdownSection: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    alignItems: 'center',
-    gap: 16,
-  },
-  section: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    padding: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    color: Colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  followButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  followButtonText: {
-    color: Colors.textMuted,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  followButtonTextActive: {
-    color: Colors.primary,
-  },
-  description: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingVertical: 8,
-  },
-  infoLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  infoIcon: {
-    marginRight: 8,
-  },
-  infoLabel: {
-    color: Colors.textMuted,
-    fontSize: 14,
-  },
-  infoValue: {
-    color: Colors.text,
-    fontSize: 14,
-    flex: 2,
-    textAlign: 'right',
-    fontWeight: '600',
-  },
-  programItem: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  programName: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  programDescription: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
+  pad: {
+    ...type.subhead,
+    color: color.textSecondary,
   },
   actions: {
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    gap: 12,
+    paddingHorizontal: space.s20,
+    paddingTop: space.s16,
+    gap: space.s8,
   },
-  mapImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 16,
-    backgroundColor: Colors.cardSolid,
+  action: {
+    alignSelf: 'stretch',
   },
-  coordinatesContainer: {
-    marginBottom: 12,
+  block: {
+    paddingHorizontal: space.s20,
+    gap: space.s12,
   },
-  coordinatesLabel: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  coordinatesValue: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  noLocationText: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 16,
-  },
-  noTimelineText: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 32,
-    fontStyle: 'italic',
-  },
-  boosterFlight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  boosterFlightHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  boosterFlightName: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: '600',
+  body: {
+    ...type.body,
+    color: color.text,
     flex: 1,
   },
-  boosterFlightStatus: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
+  fact: {
+    gap: 2,
   },
-  boosterBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginLeft: 8,
+  factLabel: {
+    ...type.caption,
+    color: color.textTertiary,
+    textTransform: 'uppercase',
   },
-  boosterBadgeSuccess: {
-    backgroundColor: '#1A4A1A',
-    borderWidth: 1,
-    borderColor: '#2A7A2A',
+  factValue: {
+    ...type.body,
+    color: color.text,
+    fontVariant: ['tabular-nums'],
   },
-  boosterBadgeFailure: {
-    backgroundColor: '#4A1A1A',
-    borderWidth: 1,
-    borderColor: '#7A2A2A',
+  linkRow: {
+    minHeight: 64,
+    paddingHorizontal: space.s20,
+    paddingVertical: space.s12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.hairline,
   },
-  boosterBadgeText: {
-    color: Colors.text,
-    fontSize: 11,
-    fontWeight: '600',
+  pressed: {
+    backgroundColor: color.bgMuted,
   },
-  boosterFlightDate: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    marginTop: 4,
+  linkText: {
+    flex: 1,
+  },
+  linkTitle: {
+    ...type.headline,
+    color: color.text,
+  },
+  linkMeta: {
+    ...type.footnote,
+    color: color.textTertiary,
+  },
+  timeCol: {
+    ...type.subhead,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+    minWidth: 72,
+  },
+  maps: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s8,
   },
 });
-

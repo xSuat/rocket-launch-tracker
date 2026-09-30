@@ -1,13 +1,13 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchAPI } from './api';
-import { getNasaApiKey, NASA_NEO_URL, NASA_APOD_URL, ISS_NOTIFY_URL } from './config';
+import { getNasaApiKey, NASA_NEO_URL, NASA_APOD_URL } from './config';
 import { memoryCache } from './cache';
 import { DataSource } from '../types';
 
 export interface SpaceEvent {
   id: string;
-  type: 'launch' | 'asteroid' | 'iss' | 'meteor' | 'moon' | 'apod';
+  type: 'launch' | 'asteroid' | 'meteor' | 'moon' | 'apod';
   title: string;
   description?: string;
   date: string;
@@ -17,6 +17,7 @@ export interface SpaceEvent {
   url?: string;
   icon: string;
   color: string;
+  allDay?: boolean;
   source?: DataSource;
   asteroidData?: {
     diameterMin?: number;
@@ -32,28 +33,37 @@ export interface SpaceEvent {
 
 const CACHE_PREFIX = 'events_cache_';
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for events
+const STALE_EVENTS_TTL_MS = 24 * 60 * 60 * 1000;
+const eventsInflight = new Map<string, Promise<SpaceEvent[]>>();
 
-async function getCachedEvents(key: string): Promise<SpaceEvent[] | null> {
+async function readEventsCache(key: string): Promise<{ data: SpaceEvent[]; fresh: boolean } | null> {
   const cacheKey = `${CACHE_PREFIX}${key}`;
-  
-  // 1. Memory Cache
-  const memoryData = memoryCache.get<SpaceEvent[]>(cacheKey);
-  if (memoryData) return memoryData;
+  const memory = memoryCache.getWithMeta<SpaceEvent[]>(cacheKey);
+  if (memory.data && !memory.isStale) {
+    return { data: memory.data, fresh: true };
+  }
 
-  // 2. Persistent Cache - return immediately if found (even if stale)
   try {
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const { data, timestamp } = JSON.parse(cached);
-      
-      // Update memory cache for faster future access
-      memoryCache.set(cacheKey, data);
-      
-      // Return data even if stale (stale-while-revalidate pattern)
-      return data;
+      if (Array.isArray(data) && typeof timestamp === 'number') {
+        const age = Date.now() - timestamp;
+        if (age < CACHE_TTL_MS) {
+          memoryCache.set(cacheKey, data);
+          return { data, fresh: true };
+        }
+        if (age < STALE_EVENTS_TTL_MS) {
+          return { data, fresh: false };
+        }
+      }
     }
   } catch (error) {
     if (__DEV__) console.error('Error reading events cache:', error);
+  }
+
+  if (memory.data) {
+    return { data: memory.data, fresh: false };
   }
   return null;
 }
@@ -74,10 +84,28 @@ async function setCachedEvents(key: string, data: SpaceEvent[]): Promise<void> {
   }
 }
 
-export function getCacheKey(startDate: string, endDate: string, latitude?: number, longitude?: number): string {
-  const dateRange = `${startDate.split('T')[0]}_${endDate.split('T')[0]}`;
-  const location = latitude && longitude ? `_${latitude}_${longitude}` : '';
-  return `${dateRange}${location}`;
+export function getCacheKey(startDate: string, endDate: string): string {
+  return `${startDate.split('T')[0]}_${endDate.split('T')[0]}`;
+}
+
+function ymd(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function localDay(input: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(input);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const date = new Date(input);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function nasaUtc(date: string, closeApproachDateFull?: string): string {
+  const time = closeApproachDateFull?.split(' ').slice(1).join(' ') || '12:00';
+  const match = /(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(time);
+  if (!match) return `${date}T12:00:00Z`;
+  return `${date}T${match[1].padStart(2, '0')}:${match[2]}:${match[3] || '00'}Z`;
 }
 
 // ... rest of the functions (getLaunchEvents, getAsteroidEvents, etc.)
@@ -147,7 +175,7 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
         if (response.status >= 400) return [];
         
         const nearEarthObjects = response.data?.near_earth_objects || {};
-        Object.entries(nearEarthObjects).forEach(([date, asteroids]: [string, any[]]) => {
+        Object.entries(nearEarthObjects).forEach(([date, asteroids]) => {
           if (Array.isArray(asteroids)) {
             asteroids.forEach((asteroid: any) => {
               const closeApproach = asteroid.close_approach_data?.[0];
@@ -157,8 +185,8 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
                   type: 'asteroid' as const,
                   title: `${asteroid.name} Close Approach`,
                   description: `Distance: ${parseFloat(closeApproach.miss_distance.kilometers).toFixed(0)} km`,
-                  date: `${date}T${closeApproach.close_approach_date_full?.split(' ')[1] || '12:00:00'}`,
-                  startDate: `${date}T${closeApproach.close_approach_date_full?.split(' ')[1] || '12:00:00'}`,
+                  date: nasaUtc(date, closeApproach.close_approach_date_full),
+                  startDate: nasaUtc(date, closeApproach.close_approach_date_full),
                   locationName: 'Near Earth',
                   url: asteroid.nasa_jpl_url,
                   icon: 'star',
@@ -207,7 +235,7 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
                 }).then(response => {
                     if (response.status >= 400) return;
                     const nearEarthObjects = response.data?.near_earth_objects || {};
-                    Object.entries(nearEarthObjects).forEach(([date, asteroids]: [string, any[]]) => {
+                    Object.entries(nearEarthObjects).forEach(([date, asteroids]) => {
                         if (Array.isArray(asteroids)) {
                             asteroids.forEach((asteroid: any) => {
                                 const closeApproach = asteroid.close_approach_data?.[0];
@@ -217,8 +245,8 @@ export async function getAsteroidEvents(startDate: string, endDate: string): Pro
                                         type: 'asteroid' as const,
                                         title: `${asteroid.name} Close Approach`,
                                         description: `Distance: ${parseFloat(closeApproach.miss_distance.kilometers).toFixed(0)} km`,
-                                        date: `${date}T${closeApproach.close_approach_date_full?.split(' ')[1] || '12:00:00'}`,
-                                        startDate: `${date}T${closeApproach.close_approach_date_full?.split(' ')[1] || '12:00:00'}`,
+                                        date: nasaUtc(date, closeApproach.close_approach_date_full),
+                                        startDate: nasaUtc(date, closeApproach.close_approach_date_full),
                                         locationName: 'Near Earth',
                                         url: asteroid.nasa_jpl_url,
                                         icon: 'star',
@@ -272,23 +300,23 @@ function getMoonPhase(date: Date): { name: string; icon: string } {
 
 export async function getMoonPhaseEvents(startDate: string, endDate: string): Promise<SpaceEvent[]> {
   const events: SpaceEvent[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const current = new Date(start);
-  
+  const current = localDay(startDate);
+  const end = localDay(endDate);
+
   while (current <= end) {
     const phase = getMoonPhase(current);
     if (['New Moon', 'Full Moon', 'First Quarter', 'Last Quarter'].includes(phase.name)) {
+      const day = ymd(current);
       events.push({
-        id: `moon-${current.toISOString().split('T')[0]}`,
+        id: `moon-${day}`,
         type: 'moon' as const,
-        title: `${phase.name}`,
+        title: phase.name,
         description: `Moon phase: ${phase.name}`,
-        date: current.toISOString(),
-        startDate: current.toISOString(),
-        endDate: new Date(current.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        date: day,
+        startDate: day,
+        endDate: day,
+        allDay: true,
         locationName: 'Worldwide',
-        url: 'https://moon.nasa.gov/',
         icon: phase.icon,
         color: '#C0C0C0',
         source: 'Other' as const,
@@ -325,13 +353,14 @@ export async function getAPODEvents(startDate: string, endDate: string): Promise
                 type: 'apod' as const,
                 title: apod.title || 'Astronomy Picture of the Day',
                 description: apod.explanation || apod.title,
-                date: `${dateStr}T12:00:00Z`,
-                startDate: `${dateStr}T00:00:00Z`,
-                endDate: `${dateStr}T23:59:59Z`,
+                date: dateStr,
+                startDate: dateStr,
+                endDate: dateStr,
+                allDay: true,
                 locationName: 'NASA',
-                url: apod.url || apod.hdurl || 'https://apod.nasa.gov/apod/',
+                url: apod.hdurl || apod.url,
                 icon: 'image-outline',
-                color: '#FF6B6B',
+                color: '#C8C8C8',
                 source: 'NASA_APOD' as const,
              });
         }
@@ -342,49 +371,6 @@ export async function getAPODEvents(startDate: string, endDate: string): Promise
     }
     return events;
   } catch { return []; }
-}
-
-// ISS
-export async function getISSEvents(startDate: string, endDate: string, locationName?: string, latitude?: number, longitude?: number): Promise<SpaceEvent[]> {
-    if (!latitude || !longitude) return [];
-    try {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        const numPasses = Math.min(100, Math.max(10, daysDiff * 4));
-
-        const response = await axios.get(ISS_NOTIFY_URL, {
-            params: { lat: latitude.toString(), lon: longitude.toString(), alt: '0', n: numPasses.toString() },
-            timeout: 6000,
-            validateStatus: s => s < 500
-        });
-
-        if (response.status >= 400) return [];
-        const events: SpaceEvent[] = [];
-
-        if (response.data?.response) {
-            response.data.response.forEach((pass: any) => {
-                const passTime = new Date(pass.risetime * 1000);
-                if (passTime >= start && passTime <= end) {
-                     events.push({
-                        id: `iss-${pass.risetime}`,
-                        type: 'iss' as const,
-                        title: 'ISS Visible',
-                        description: `ISS pass visible for ${Math.round(pass.duration / 60)} minutes`,
-                        date: passTime.toISOString(),
-                        startDate: passTime.toISOString(),
-                        endDate: new Date(pass.risetime * 1000 + pass.duration * 1000).toISOString(),
-                        locationName: locationName || 'Your Location',
-                        url: 'https://spotthestation.nasa.gov/',
-                        icon: 'satellite-variant',
-                        color: '#00D4FF',
-                        source: 'ISS_API' as const,
-                     });
-                }
-            });
-        }
-        return events;
-    } catch { return []; }
 }
 
 // Meteor Showers
@@ -399,24 +385,25 @@ export async function getMeteorShowerEvents(startDate: string, endDate: string):
         { name: 'Geminids', month: 11, day: 14, peak: 'December 14' },
     ];
     const events: SpaceEvent[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = localDay(startDate);
+    const end = localDay(endDate);
     for (let year = start.getFullYear(); year <= end.getFullYear(); year++) {
         knownShowers.forEach(shower => {
             const showerDate = new Date(year, shower.month, shower.day);
             if (showerDate >= start && showerDate <= end) {
+                const day = ymd(showerDate);
                 events.push({
                     id: `meteor-${shower.name}-${year}`,
                     type: 'meteor' as const,
                     title: `${shower.name} Meteor Shower`,
                     description: `Peak: ${shower.peak}`,
-                    date: showerDate.toISOString(),
-                    startDate: new Date(showerDate.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-                    endDate: new Date(showerDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+                    date: day,
+                    startDate: day,
+                    endDate: day,
+                    allDay: true,
                     locationName: 'Worldwide',
-                    url: 'https://www.imo.net/',
                     icon: 'meteor',
-                    color: '#FFA500',
+                    color: '#C8C8C8',
                     source: 'Other' as const,
                 });
             }
@@ -425,57 +412,115 @@ export async function getMeteorShowerEvents(startDate: string, endDate: string):
     return events;
 }
 
+async function loadEvents(startDate: string, endDate: string): Promise<SpaceEvent[]> {
+  const results = await Promise.allSettled([
+    getLaunchEvents(startDate, endDate),
+    getAsteroidEvents(startDate, endDate),
+    getMeteorShowerEvents(startDate, endDate),
+    getMoonPhaseEvents(startDate, endDate),
+    getAPODEvents(startDate, endDate),
+  ]);
+
+  const events: SpaceEvent[] = [];
+  results.forEach(r => {
+    if (r.status === 'fulfilled') events.push(...r.value);
+  });
+
+  return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
 export async function getAllEvents(
   startDate: string,
   endDate: string,
-  locationName?: string,
-  latitude?: number,
-  longitude?: number,
   useCache: boolean = true
 ): Promise<SpaceEvent[]> {
-    const cacheKey = getCacheKey(startDate, endDate, latitude, longitude);
-    if (useCache) {
-        const cached = await getCachedEvents(cacheKey);
-        if (cached) return cached;
+  const cacheKey = getCacheKey(startDate, endDate);
+  const cached = useCache ? await readEventsCache(cacheKey) : null;
+  if (cached?.fresh) return cached.data;
+
+  const existing = eventsInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = (async () => {
+    try {
+      const sorted = await loadEvents(startDate, endDate);
+      if (sorted.length > 0 || !cached) {
+        await setCachedEvents(cacheKey, sorted);
+        return sorted;
+      }
+      return cached.data;
+    } catch {
+      if (cached) return cached.data;
+      throw new Error('Could not load space events. Check your connection and try again.');
     }
+  })();
 
-    const results = await Promise.allSettled([
-      getLaunchEvents(startDate, endDate),
-      getAsteroidEvents(startDate, endDate),
-      getISSEvents(startDate, endDate, locationName, latitude, longitude),
-      getMeteorShowerEvents(startDate, endDate),
-      getMoonPhaseEvents(startDate, endDate),
-      getAPODEvents(startDate, endDate),
-    ]);
-
-    const events: SpaceEvent[] = [];
-    results.forEach(r => {
-        if (r.status === 'fulfilled') events.push(...r.value);
-    });
-
-    const sorted = events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    await setCachedEvents(cacheKey, sorted);
-    return sorted;
+  eventsInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    eventsInflight.delete(cacheKey);
+  }
 }
 
-export async function getEventsForDay(
-  date: Date,
-  locationName?: string,
-  latitude?: number,
-  longitude?: number
-): Promise<SpaceEvent[]> {
+export interface ApodPicture {
+  date: string;
+  title: string;
+  explanation?: string;
+  url?: string;
+  hdurl?: string;
+  media_type?: string;
+  thumbnail_url?: string;
+  copyright?: string;
+}
+
+export async function getAPODRange(startDate: string, endDate: string): Promise<ApodPicture[]> {
+  const cacheKey = `${CACHE_PREFIX}apod_${startDate}_${endDate}`;
+  const memory = memoryCache.getWithMeta<ApodPicture[]>(cacheKey);
+  if (memory.data && !memory.isStale) return memory.data;
+
+  const nasaApiKey = getNasaApiKey();
+  const response = await axios.get(NASA_APOD_URL, {
+    params: {
+      start_date: startDate,
+      end_date: endDate,
+      thumbs: true,
+      api_key: nasaApiKey,
+    },
+    timeout: 15000,
+    validateStatus: (status) => status < 500,
+  });
+  if (response.status >= 400) {
+    if (memory.data) return memory.data;
+    throw new Error('Could not load pictures. Check your connection and try again.');
+  }
+  const raw = Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
+  const pictures: ApodPicture[] = raw.map((item: any) => ({
+    date: item.date,
+    title: item.title || 'Astronomy Picture of the Day',
+    explanation: item.explanation,
+    url: item.url,
+    hdurl: item.hdurl,
+    media_type: item.media_type,
+    thumbnail_url: item.thumbnail_url,
+    copyright: item.copyright,
+  })).reverse();
+  memoryCache.set(cacheKey, pictures);
+  try {
+    await AsyncStorage.setItem(cacheKey, JSON.stringify({ data: pictures, timestamp: Date.now() }));
+  } catch {
+    // The in-memory copy is enough for this session.
+  }
+  return pictures;
+}
+
+export async function getEventsForDay(date: Date): Promise<SpaceEvent[]> {
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date);
   endOfDay.setHours(23, 59, 59, 999);
   
-  const allEvents = await getAllEvents(
-    startOfDay.toISOString(),
-    endOfDay.toISOString(),
-    locationName,
-    latitude,
-    longitude
-  );
+  const allEvents = await getAllEvents(startOfDay.toISOString(), endOfDay.toISOString());
   
   return allEvents.filter((event) => {
     const eventDate = new Date(event.date);

@@ -1,96 +1,49 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { GradientButton } from './ui';
-import { Colors } from '../constants/colors';
+import { StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { color, space, type } from '../constants/theme';
+import { Button } from './ui/Button';
 
 interface ErrorStateProps {
-  message: string;
+  title?: string;
+  message?: string;
   onRetry?: () => void;
   onBack?: () => void;
 }
 
-export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry, onBack }) => {
-  // Split message by newlines to handle multi-line messages
-  const messageLines = message.split('\n');
-  
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Something went wrong</Text>
-      <View style={styles.messageContainer}>
-        {messageLines.map((line, index) => (
-          <Text key={index} style={styles.message}>
-            {line}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.buttonContainer}>
-        {onBack && (
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        )}
-        {onRetry && (
-          <GradientButton
-            title="Try Again"
-            onPress={onRetry}
-            style={styles.retryButton}
-          />
-        )}
-      </View>
-    </View>
-  );
-};
+export const ErrorState: React.FC<ErrorStateProps> = ({
+  title = "Couldn't load launches",
+  message = 'Check your connection and try again.',
+  onRetry,
+  onBack,
+}) => (
+  <View style={styles.wrap}>
+    <Ionicons name="refresh-outline" size={32} color={color.textTertiary} />
+    <Text style={styles.title}>{title}</Text>
+    {message ? <Text style={styles.message}>{message}</Text> : null}
+    {onRetry ? <Button label="Try again" onPress={onRetry} style={styles.action} /> : null}
+    {onBack ? <Button label="Back" variant="secondary" onPress={onBack} style={styles.action} /> : null}
+  </View>
+);
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
+  wrap: {
     alignItems: 'center',
-    padding: 32,
+    padding: space.s32,
+    gap: space.s8,
   },
   title: {
-    color: Colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
+    ...type.headline,
+    color: color.text,
     textAlign: 'center',
-  },
-  messageContainer: {
-    marginBottom: 24,
-    maxWidth: '90%',
   },
   message: {
-    color: Colors.textMuted,
-    fontSize: 14,
+    ...type.footnote,
+    color: color.textTertiary,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 4,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-    maxWidth: 300,
-    justifyContent: 'center',
-  },
-  retryButton: {
-    flex: 1,
-  },
-  backButton: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '600',
+  action: {
+    marginTop: space.s8,
+    alignSelf: 'stretch',
   },
 });
-

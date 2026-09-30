@@ -1,29 +1,32 @@
 # Assets
 
-This directory should contain the following assets for the app:
+App icon, splash and favicon images referenced from `app.json`.
 
-## Required Assets
+| File | Size | Used for |
+| --- | --- | --- |
+| `icon.png` | 1024×1024, opaque RGB (no alpha) | iOS app icon / App Store icon (`expo.icon`) |
+| `adaptive-icon.png` | 1024×1024, transparent | Android adaptive icon foreground (`android.adaptiveIcon.foregroundImage`) |
+| `splash-icon.png` | 1024×1024, transparent | Splash screen image (`expo-splash-screen` plugin) |
+| `favicon.png` | 48×48 | Web favicon (`web.favicon`) |
 
-1. **icon.png** - App icon (1024x1024px)
-   - Used as the main app icon
+## Sources
 
-2. **splash.png** - Splash screen image
-   - Recommended: 1284x2778px (iPhone X dimensions)
-   - Will be scaled for different devices
+The artwork is original and lives in `source/` as SVG:
 
-3. **adaptive-icon.png** - Android adaptive icon foreground (1024x1024px)
-   - Used for Android adaptive icons
+- `source/icon.svg` – full icon (rocket over the app's space gradient); also rendered as the favicon
+- `source/adaptive-icon.svg` – rocket only, scaled into the Android adaptive icon safe zone
+- `source/splash-icon.svg` – rocket with a soft glow, for the splash screen
 
-4. **favicon.png** - Web favicon (48x48px)
-   - Used when running on web
+Keep the icon full-bleed and square: iOS applies the rounded mask itself, and App Store
+Connect rejects icons with an alpha channel.
 
-## Placeholder Assets
+## Regenerating the PNGs
 
-For development, you can use placeholder images or create simple colored squares:
-- icon.png: 1024x1024px solid color or simple rocket icon
-- splash.png: 1284x2778px with app name/logo
-- adaptive-icon.png: 1024x1024px (same as icon.png)
-- favicon.png: 48x48px simple icon
+`sharp` is only needed for rendering, so it is not a project dependency:
 
-The app will work without these assets, but they're required for production builds.
+```bash
+npm install --no-save sharp
+node assets/source/render.mjs
+```
 
+After changing the icon, create a new build (`eas build`) for it to show up on devices.

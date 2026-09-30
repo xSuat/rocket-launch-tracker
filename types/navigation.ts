@@ -6,22 +6,17 @@ export type RootStackParamList = {
   MainTabs: undefined;
   LaunchDetails: { launchId: string };
   Settings: undefined;
-  RocketDetails: { rocketId: number };
-  Rockets: undefined;
-  SpaceEventsCalendar: undefined;
 };
 
 export type TabParamList = {
-  Upcoming: undefined;
-  History: undefined;
+  Launches: undefined;
   Favorites: undefined;
-  Calendar: undefined;
-  NASAImages: undefined;
-  Notifications: undefined;
+  Events: undefined;
+  Gallery: undefined;
+  Reminders: undefined;
 };
 
 export type TabScreenNavigationProp<T extends keyof TabParamList> = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, T>,
   NativeStackNavigationProp<RootStackParamList>
 >;
-

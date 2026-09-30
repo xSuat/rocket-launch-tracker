@@ -9,32 +9,33 @@ export const NASA_BASE_URL = 'https://api.nasa.gov';
 export const NASA_NEO_URL = `${NASA_BASE_URL}/neo/rest/v1/feed`;
 export const NASA_APOD_URL = `${NASA_BASE_URL}/planetary/apod`;
 
-// ISS APIs
-export const ISS_NOTIFY_URL = 'https://api.open-notify.org/iss-pass.json';
-
-// Get API Environment
-// First checks AsyncStorage for user preference, then falls back to env variable
-// If not set, defaults to 'dev' (safer for development to avoid using prod quota)
-export const getApiEnv = async (): Promise<'dev' | 'prod'> => {
-  try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    const stored = await AsyncStorage.getItem('api_environment');
-    if (stored === 'prod' || stored === 'dev') {
-      return stored;
-    }
-  } catch (e) {
-    // ignore
-  }
-  
-  // Fallback to environment variable
+const readLl2Env = (): 'dev' | 'prod' | null => {
   const env = process.env.EXPO_PUBLIC_LL2_ENV;
-  return env === 'prod' || env === 'production' ? 'prod' : 'dev';
+  if (env === 'prod' || env === 'production') return 'prod';
+  if (env === 'dev') return 'dev';
+  return null;
 };
 
-// Synchronous version for initial load (uses env var only)
+// Development builds may override the endpoint from Settings. Store builds
+// follow EXPO_PUBLIC_LL2_ENV, and use production when that variable is unset.
+export const getApiEnv = async (): Promise<'dev' | 'prod'> => {
+  if (__DEV__) {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const stored = await AsyncStorage.getItem('api_environment');
+      if (stored === 'prod' || stored === 'dev') {
+        return stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return readLl2Env() ?? (__DEV__ ? 'dev' : 'prod');
+};
+
 export const getApiEnvSync = (): 'dev' | 'prod' => {
-  const env = process.env.EXPO_PUBLIC_LL2_ENV;
-  return env === 'prod' || env === 'production' ? 'prod' : 'dev';
+  return readLl2Env() ?? (__DEV__ ? 'dev' : 'prod');
 };
 
 // Get Base URL (synchronous - uses env var, for initial setup)
@@ -47,9 +48,30 @@ export const getBaseUrlForEnv = (env: 'dev' | 'prod'): string => {
   return env === 'prod' ? PROD_BASE_URL : DEV_BASE_URL;
 };
 
-// NASA Config
+const NASA_KEY_PLACEHOLDERS = new Set([
+  'demo_key',
+  '<your_nasa_api_key_here>',
+  'your_nasa_api_key_here',
+  'your_api_key_here',
+  'your_actual_api_key_here',
+  'changeme',
+  'placeholder',
+]);
+
+const readNasaKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes('<') || trimmed.includes('>')) return null;
+  if (NASA_KEY_PLACEHOLDERS.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+};
+
 export const getNasaApiKey = (): string => {
-  return process.env.EXPO_PUBLIC_NASA_API_KEY || Constants.expoConfig?.extra?.nasaApiKey || 'DEMO_KEY';
+  return (
+    readNasaKey(process.env.EXPO_PUBLIC_NASA_API_KEY) ||
+    readNasaKey(Constants.expoConfig?.extra?.nasaApiKey) ||
+    'DEMO_KEY'
+  );
 };
 
 // Cache Config

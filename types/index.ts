@@ -68,7 +68,35 @@ export interface Mission {
   agencies?: Agency[];
 }
 
-export type DataSource = "LL2" | "NASA_NeoWs" | "NASA_APOD" | "ISS_API" | "Other";
+export type DataSource = "LL2" | "NASA_NeoWs" | "NASA_APOD" | "Other";
+
+export interface LaunchImage {
+  id?: number;
+  name?: string;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  credit?: string | null;
+  license?: { name?: string; link?: string } | null;
+}
+
+export interface LaunchLink {
+  priority?: number;
+  source?: string;
+  publisher?: string;
+  title?: string;
+  description?: string;
+  url: string;
+}
+
+export interface LaunchTimelineEntry {
+  type?: {
+    id?: number;
+    name?: string;
+    abbrev?: string;
+    description?: string;
+  };
+  relative_time?: string | null;
+}
 
 export interface Launch {
   id: string;
@@ -102,7 +130,11 @@ export interface Launch {
   mission?: Mission;
   pad: Pad;
   webcast_live?: boolean;
-  image?: string;
+  image?: string | LaunchImage | null;
+  vid_urls?: LaunchLink[];
+  info_urls?: LaunchLink[];
+  timeline?: LaunchTimelineEntry[];
+  last_updated?: string;
   infographic?: string;
   program?: Array<{
     id: number;

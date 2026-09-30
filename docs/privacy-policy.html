@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — Rocket Launch Tracker</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; max-width: 40rem; margin: 2rem auto; padding: 0 1.25rem; color: #1a1a1a; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.75rem; }
+    a { color: #0b57d0; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p>Rocket Launch Tracker (“the app”) is an independent iPhone app for looking up rocket launches and sky events. This policy describes what the app stores and what it sends over the network. It was last updated on September 29, 2026.</p>
+
+  <h2>Who we are</h2>
+  <p>The app is published from the project at <a href="https://github.com/xSuat/rocket-launch-tracker">github.com/xSuat/rocket-launch-tracker</a>. It is not affiliated with, endorsed by, or sponsored by NASA or any launch provider.</p>
+
+  <h2>Data stored on your device</h2>
+  <p>The app keeps the following on the phone, and does not upload it to a server we operate:</p>
+  <ul>
+    <li>Favorite launches</li>
+    <li>Launch reminders (the launch name and the time you chose)</li>
+    <li>Launch providers you mark as followed</li>
+    <li>Your default map app, if you set one</li>
+    <li>A cache of launch and event data so screens can open again without a new download</li>
+  </ul>
+  <p>You can remove the cache from Settings → Clear Cache. Uninstalling the app removes the rest.</p>
+
+  <h2>Data that leaves the device</h2>
+  <p>The app has no account, no analytics, and no advertising. It does not send your name, contacts, photos, location, or a device identifier that we use to recognize you.</p>
+  <p>To show launches and sky events it requests public data from:</p>
+  <ul>
+    <li><strong>The Space Devs — Launch Library 2</strong> (<a href="https://ll.thespacedevs.com">ll.thespacedevs.com</a>), for launch schedules and rocket information</li>
+    <li><strong>NASA</strong> (<a href="https://api.nasa.gov">api.nasa.gov</a>), for asteroid close approaches and the Astronomy Picture of the Day</li>
+  </ul>
+  <p>Those requests include whatever a normal HTTPS connection sends, including your IP address, so the service can reply. The app does not add your location. A NASA API key, if the build was configured with one, is an app credential sent with NASA requests. It is not your personal information. If no key is configured, the app uses NASA’s shared <code>DEMO_KEY</code>.</p>
+  <p>We do not receive a copy of those responses on a server of our own, and we do not use them to track you across apps or websites.</p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><strong>Notifications.</strong> Used only if you set a launch reminder. The reminder is scheduled on this device. The app does not register for remote push notifications.</li>
+    <li><strong>Calendar.</strong> Used only when you tap Add to Calendar. On iOS 17 and later the system event sheet opens without a prior calendar permission. On earlier iOS versions the app asks for calendar access at that moment so it can open the sheet. The app does not read your existing events, and it does not use Reminders.</li>
+    <li><strong>Location.</strong> The app does not request location access.</li>
+  </ul>
+  <p>If you open a launch pad in Maps or Waze, or open a provider’s website, that app or site receives the link you chose to open. That is outside this app.</p>
+
+  <h2>Children</h2>
+  <p>The app is not directed at children under 13, and it does not knowingly collect personal information from anyone.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the updated page will be published at this address and the date at the top will change.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy can be sent through <a href="https://github.com/xSuat/rocket-launch-tracker/issues">GitHub issues</a> or the <a href="support.html">support page</a>.</p>
+</body>
+</html>

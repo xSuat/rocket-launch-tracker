@@ -1,219 +1,125 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  FlatList,
-  StyleSheet,
-  RefreshControl,
-  ScrollView,
-  Platform,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useState } from 'react';
+import { RefreshControl, SectionList, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { color, space } from '../constants/theme';
+import { RootStackParamList } from '../types/navigation';
 import { Launch } from '../types';
-import { TabScreenNavigationProp } from '../types/navigation';
 import { launchAPI } from '../services/api';
 import { useApp } from '../context/AppContext';
-import { LaunchCard } from '../components/LaunchCard';
-import { LoadingState } from '../components/LoadingState';
+import { useNow } from '../hooks/useNow';
+import { useToast } from '../components/ui/Toast';
+import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { LaunchRow } from '../components/LaunchRow';
 import { EmptyState } from '../components/EmptyState';
-import { PageHeader, StatCard } from '../components/ui';
-import { isLaunchUpcoming } from '../components/ui/StatusBadge';
-import { Colors } from '../constants/colors';
-
-type NavigationProp = TabScreenNavigationProp<'Favorites'>;
+import { ErrorState } from '../components/ErrorState';
+import { Skeleton } from '../components/ui/Skeleton';
+import { isUpcomingStatus } from '../utils/launchStatus';
+import { hapticFavorite } from '../utils/haptics';
 
 export const FavoritesScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation<NavigationProp>();
-  const { favorites, favoriteLaunches, setFavoriteLaunches } = useApp();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { favorites, removeFavorite, addFavorite } = useApp();
+  const { showToast } = useToast();
+  const now = useNow(60000);
+  const [launches, setLaunches] = useState<Launch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadFavoriteLaunches = useCallback(async (showLoading = false) => {
+  const load = useCallback(async (refresh = false) => {
     if (favorites.length === 0) {
-      setFavoriteLaunches([]);
+      setLaunches([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
-
+    if (refresh) setRefreshing(true);
+    else if (launches.length === 0) setLoading(true);
+    setError(null);
     try {
-      if (showLoading) {
-        setLoading(true);
-      }
-      const launches: Launch[] = [];
-      for (const id of favorites) {
-        try {
-          const launch = await launchAPI.getLaunchById(id);
-          launches.push(launch);
-        } catch (error) {
-          if (__DEV__) console.error(`Error loading launch ${id}:`, error);
-        }
-      }
-      setFavoriteLaunches(launches);
-    } catch (error) {
-      if (__DEV__) console.error('Error loading favorites:', error);
+      const results = await Promise.all(
+        favorites.map((id) => launchAPI.getLaunchById(id, !refresh).catch(() => null))
+      );
+      setLaunches(results.filter((item): item is Launch => !!item));
+    } catch (err: any) {
+      setError(err.message || 'Could not load favorites');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [favorites, setFavoriteLaunches]);
+  }, [favorites, launches.length]);
 
-  // Only load on mount, not on every focus
-  useEffect(() => {
-    loadFavoriteLaunches(true);
-  }, [loadFavoriteLaunches]);
-
-  // Refresh on focus only if favorites list changed
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if we have data already (silent refresh)
-      if (favoriteLaunches.length > 0 || favorites.length === 0) {
-        loadFavoriteLaunches(false);
-      }
-    }, [favorites.length, favoriteLaunches.length, loadFavoriteLaunches])
+      load(false);
+    }, [favorites.join('|')])
   );
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadFavoriteLaunches();
-  }, [loadFavoriteLaunches]);
-
-  const handleLaunchPress = (launchId: string) => {
-    navigation.navigate('LaunchDetails', { launchId });
-  };
-
-  // Calculate stats
-  const stats = useMemo(() => {
-    const total = favoriteLaunches.length;
-    const upcoming = favoriteLaunches.filter(l => isLaunchUpcoming(l.status?.abbrev || '')).length;
-    const providers = new Set(
-      favoriteLaunches
-        .map(l => l.launch_service_provider?.name)
-        .filter(Boolean)
-    ).size;
-    
-    return {
-      total,
-      upcoming,
-      providers,
-    };
-  }, [favoriteLaunches]);
-
-  // Calculate heights
-  const headerTitleHeight = 80; // Title + subtitle height
-  const statsHeight = 92; // Stats container height
-  const topSectionHeight = Math.max(insets.top, 16) + headerTitleHeight + statsHeight;
+  const upcoming = launches.filter((launch) => isUpcomingStatus(launch.status?.id));
+  const past = launches.filter((launch) => !isUpcomingStatus(launch.status?.id));
+  const sections = [
+    upcoming.length ? { title: 'Upcoming', data: upcoming } : null,
+    past.length ? { title: 'Past', data: past } : null,
+  ].filter(Boolean) as { title: string; data: Launch[] }[];
 
   return (
-    <LinearGradient
-      colors={Colors.backgroundGradient as any}
-      style={styles.container}
-    >
-      {/* Fixed Blur Background for Top Section */}
-      {Platform.OS === 'ios' ? (
-        <BlurView
-          intensity={20}
-          tint="dark"
-          style={[styles.blurBackground, { height: topSectionHeight }]}
-        />
-      ) : (
-        <View style={[styles.blurBackground, { height: topSectionHeight, backgroundColor: 'rgba(0, 0, 0, 0.6)' }]} />
-      )}
-
-      {/* Fixed Top Section - Title + Stats */}
-      <View style={[styles.topSectionWrapper, { paddingTop: Math.max(insets.top, 16), height: topSectionHeight }]}>
-        <PageHeader
-          title="Favorites"
-          subtitle="Your saved launches"
-        />
-        <View style={styles.statsContainer}>
-          <StatCard value={loading ? '-' : stats.total} label="Total" />
-          <StatCard value={loading ? '-' : stats.upcoming} label="Upcoming" />
-          <StatCard value={loading ? '-' : stats.providers} label="Providers" />
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={[styles.loadingContainer, { paddingTop: topSectionHeight + 24 }]}>
-          <LoadingState message="Loading favorites..." />
-        </View>
-      ) : favoriteLaunches.length === 0 ? (
-        <ScrollView 
-          style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingTop: topSectionHeight + 24 }]}
-          contentInsetAdjustmentBehavior="automatic"
-        >
-          <EmptyState
-            title="No favorites yet"
-            message="Tap the heart icon on any launch to add it to your favorites"
+    <View style={styles.screen}>
+      <SectionList
+        sections={loading && launches.length === 0 ? [] : sections}
+        keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={false}
+        ListHeaderComponent={<ScreenHeader title="Favorites" />}
+        renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+        renderItem={({ item }) => (
+          <LaunchRow
+            launch={item}
+            now={now}
+            favorite
+            onPress={() => navigation.navigate('LaunchDetails', { launchId: item.id })}
+            onToggleFavorite={async () => {
+              hapticFavorite();
+              await removeFavorite(item.id);
+              setLaunches((current) => current.filter((launch) => launch.id !== item.id));
+              showToast('Removed from favorites', async () => {
+                await addFavorite(item.id);
+                setLaunches((current) => current.some((launch) => launch.id === item.id) ? current : [item, ...current]);
+              });
+            }}
           />
-        </ScrollView>
-      ) : (
-        <FlatList
-          data={favoriteLaunches}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingTop: topSectionHeight + 24 }]}
-          renderItem={({ item }) => (
-            <LaunchCard
-              launch={item}
-              onPress={() => handleLaunchPress(item.id)}
-              showCountdown={isLaunchUpcoming(item.status?.abbrev || '')}
+        )}
+        ListEmptyComponent={
+          loading ? (
+            <Skeleton />
+          ) : error ? (
+            <ErrorState message={error} onRetry={() => load(true)} />
+          ) : (
+            <EmptyState
+              icon="heart-outline"
+              title="No favorites yet"
+              message="On a launch, tap the heart."
             />
-          )}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh} 
-              tintColor={Colors.primary}
-              colors={[Colors.primary]}
-              progressBackgroundColor={Colors.background}
-              progressViewOffset={topSectionHeight}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-    </LinearGradient>
+          )
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.text}
+            colors={[color.text]}
+            progressBackgroundColor={color.bg}
+          />
+        }
+        contentContainerStyle={styles.content}
+        style={styles.list}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  blurBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  topSectionWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 11,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 16,
-  },
-  list: {
-    flex: 1,
-    zIndex: 1,
-  },
-  listContent: {
-    paddingBottom: 100, // Extra padding for tab bar
-  },
-  loadingContainer: {
-    flex: 1,
-  },
+  screen: { flex: 1, backgroundColor: 'transparent' },
+  list: { flex: 1, backgroundColor: 'transparent' },
+  content: { paddingBottom: space.s24 },
 });
-
