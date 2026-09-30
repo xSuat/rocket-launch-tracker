@@ -41,7 +41,7 @@ Store builds read `EXPO_PUBLIC_NASA_API_KEY`. Empty or placeholder values are ig
 Create one at [api.nasa.gov](https://api.nasa.gov/#signUp), then:
 
 ```bash
-eas env:create --environment production --name EXPO_PUBLIC_NASA_API_KEY --value YOUR_KEY --visibility sensitive --type string
+eas env:set --environment production --name EXPO_PUBLIC_NASA_API_KEY --value YOUR_KEY --visibility sensitive --type string
 ```
 
 Repeat with `--environment preview` if you install preview builds. Skip this step to ship with `DEMO_KEY`.
@@ -59,7 +59,9 @@ npx eas-cli@latest metadata:lint
 eas metadata:push
 ```
 
-`metadata:push` does not fill the review contact. In App Store Connect, add the review contact's first name, last name, email, and phone. There is no demo account (`store.config.json` notes say so).
+`store.config.json` does not include a review contact. EAS Metadata requires a first name, last name, email, and phone for that object, and those are the owner's. Add them in App Store Connect. There is no demo account. Review notes to paste:
+
+> No login and no demo account. The app has no user accounts. Calendar permission is requested only on iOS 16 and earlier, and only after the reviewer taps Add to Calendar on an event. On iOS 17 and later, Add to Calendar opens the system event sheet without a prior permission prompt. Notifications are optional local reminders; the app does not use remote push and has no push entitlement. The app does not request location. Launch data is from Launch Library 2 (The Space Devs). Asteroid data and the picture gallery are from NASA's public APIs. The app is not affiliated with NASA or any launch provider. Privacy policy: https://xsuat.github.io/rocket-launch-tracker/privacy-policy.html
 
 `store.config.json` sets `automaticRelease` to false, so an approved version stays held until you release it.
 
@@ -147,7 +149,7 @@ Install the uploaded build with TestFlight. Check upcoming launches, a launch de
 
 ## 14. Submit for review
 
-Submit the version in App Store Connect. Paste the review notes from `store.config.json` (`apple.review.notes`) if they are not already on the version. After approval, release the version yourself (`automaticRelease` is false).
+Submit the version in App Store Connect. Paste the review notes from step 6 if they are not already on the version. After approval, release the version yourself (`automaticRelease` is false).
 
 ## What the project already sets
 

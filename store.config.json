@@ -38,9 +38,6 @@
         "supportUrl": "https://xsuat.github.io/rocket-launch-tracker/support.html",
         "privacyPolicyUrl": "https://xsuat.github.io/rocket-launch-tracker/privacy-policy.html"
       }
-    },
-    "review": {
-      "notes": "No login and no demo account. The app has no user accounts. Calendar permission is requested only on iOS 16 and earlier, and only after the reviewer taps Add to Calendar on an event. On iOS 17 and later, Add to Calendar opens the system event sheet without a prior permission prompt. Notifications are optional local reminders; the app does not use remote push and has no push entitlement. The app does not request location. Launch data is from Launch Library 2 (The Space Devs). Asteroid data and the picture gallery are from NASA's public APIs. The app is not affiliated with NASA or any launch provider. Privacy policy: https://xsuat.github.io/rocket-launch-tracker/privacy-policy.html"
     }
   }
 }

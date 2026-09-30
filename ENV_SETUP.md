@@ -23,7 +23,7 @@ Set `EXPO_PUBLIC_NASA_API_KEY` in `.env`, then restart Expo with `npm start`. `.
 App Store and other EAS builds do not upload `.env`. Create the variable on EAS instead:
 
 ```bash
-eas env:create --environment production --name EXPO_PUBLIC_NASA_API_KEY --value YOUR_KEY --visibility sensitive --type string
+eas env:set --environment production --name EXPO_PUBLIC_NASA_API_KEY --value YOUR_KEY --visibility sensitive --type string
 ```
 
 `EXPO_PUBLIC_` values are compiled into the app, so treat the key as public. Do not put it in `app.json`.
