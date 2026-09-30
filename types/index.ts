@@ -76,6 +76,26 @@ export interface LaunchImage {
   image_url?: string | null;
   thumbnail_url?: string | null;
   credit?: string | null;
+  license?: { name?: string; link?: string } | null;
+}
+
+export interface LaunchLink {
+  priority?: number;
+  source?: string;
+  publisher?: string;
+  title?: string;
+  description?: string;
+  url: string;
+}
+
+export interface LaunchTimelineEntry {
+  type?: {
+    id?: number;
+    name?: string;
+    abbrev?: string;
+    description?: string;
+  };
+  relative_time?: string | null;
 }
 
 export interface Launch {
@@ -111,6 +131,10 @@ export interface Launch {
   pad: Pad;
   webcast_live?: boolean;
   image?: string | LaunchImage | null;
+  vid_urls?: LaunchLink[];
+  info_urls?: LaunchLink[];
+  timeline?: LaunchTimelineEntry[];
+  last_updated?: string;
   infographic?: string;
   program?: Array<{
     id: number;

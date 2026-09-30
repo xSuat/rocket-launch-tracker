@@ -34,11 +34,6 @@
       "config": {
         "usesNonExemptEncryption": false
       },
-      "infoPlist": {
-        "LSApplicationQueriesSchemes": [
-          "waze"
-        ]
-      },
       "privacyManifests": {
         "NSPrivacyTracking": false,
         "NSPrivacyTrackingDomains": [],

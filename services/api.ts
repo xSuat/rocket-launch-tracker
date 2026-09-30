@@ -21,6 +21,7 @@ interface StoredCache<T> {
   data: T;
   isStale: boolean;
   age: number;
+  fetchedAt?: number;
 }
 
 function toFriendlyError(error: unknown): Error {
@@ -121,7 +122,7 @@ class LaunchAPI {
     const memory = memoryCache.getWithMeta<T>(cacheKey);
     if (memory.data && !memory.isStale) {
       const age = memory.timestamp ? Date.now() - memory.timestamp : 0;
-      return { data: memory.data, isStale: false, age };
+      return { data: memory.data, isStale: false, age, fetchedAt: memory.timestamp };
     }
 
     try {
@@ -134,7 +135,7 @@ class LaunchAPI {
           if (!isStale) {
             memoryCache.set(cacheKey, parsed.data);
           }
-          return { data: parsed.data, isStale, age };
+          return { data: parsed.data, isStale, age, fetchedAt: parsed.timestamp };
         }
       }
     } catch (e) {
@@ -143,7 +144,7 @@ class LaunchAPI {
 
     if (memory.data) {
       const age = memory.timestamp ? Date.now() - memory.timestamp : CACHE_TTL_MS;
-      return { data: memory.data, isStale: true, age };
+      return { data: memory.data, isStale: true, age, fetchedAt: memory.timestamp };
     }
     return null;
   }
@@ -203,18 +204,18 @@ class LaunchAPI {
     return `past_${JSON.stringify(filters)}`;
   }
 
-  async getCachedUpcomingLaunches(filters: LaunchFilters): Promise<{ data: LaunchResponse | null; isStale: boolean }> {
+  async getCachedUpcomingLaunches(filters: LaunchFilters): Promise<{ data: LaunchResponse | null; isStale: boolean; fetchedAt?: number }> {
     const cacheKey = `${this.getCachePrefix()}${this.getUpcomingLaunchesCacheKey(filters)}`;
     const cached = await this.readCache<LaunchResponse>(cacheKey);
     if (!cached) return { data: null, isStale: false };
-    return { data: cached.data, isStale: cached.isStale };
+    return { data: cached.data, isStale: cached.isStale, fetchedAt: cached.fetchedAt };
   }
 
-  async getCachedPastLaunches(filters: LaunchFilters): Promise<{ data: LaunchResponse | null; isStale: boolean }> {
+  async getCachedPastLaunches(filters: LaunchFilters): Promise<{ data: LaunchResponse | null; isStale: boolean; fetchedAt?: number }> {
     const cacheKey = `${this.getCachePrefix()}${this.getPastLaunchesCacheKey(filters)}`;
     const cached = await this.readCache<LaunchResponse>(cacheKey);
     if (!cached) return { data: null, isStale: false };
-    return { data: cached.data, isStale: cached.isStale };
+    return { data: cached.data, isStale: cached.isStale, fetchedAt: cached.fetchedAt };
   }
 
   async getUpcomingLaunches(filters: LaunchFilters = {}, useCache: boolean = true): Promise<LaunchResponse> {

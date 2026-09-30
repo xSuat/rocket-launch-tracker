@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { launchAPI } from '../services/api';
 import { Launch, LaunchFilters } from '../types';
 
@@ -6,158 +6,118 @@ interface UseLaunchesResult {
   data: Launch[];
   loading: boolean;
   refreshing: boolean;
+  loadingMore: boolean;
   error: string | null;
+  loadMoreError: string | null;
+  updatedAt: number | null;
   refetch: () => Promise<void>;
   hasMore: boolean;
   loadMore: () => Promise<void>;
 }
 
-export const useUpcomingLaunches = (
-  filters: LaunchFilters = {}
-): UseLaunchesResult => {
+function useLaunchList(
+  kind: 'upcoming' | 'past',
+  filters: LaunchFilters,
+  enabled: boolean
+): UseLaunchesResult {
   const [data, setData] = useState<Launch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [next, setNext] = useState<string | undefined>(undefined);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const loadingMoreRef = useRef(false);
+  const dataLength = useRef(0);
+  dataLength.current = data.length;
 
   const fetchLaunches = useCallback(async (isRefresh = false, isLoadMore = false) => {
+    if (!enabled && !isRefresh && !isLoadMore) return;
+
     if (isRefresh) {
-        setRefreshing(true);
+      setRefreshing(true);
     } else if (isLoadMore) {
-        // Don't set loading for infinite scroll
+      setLoadingMore(true);
+      setLoadMoreError(null);
     } else {
-        // Try to load from cache first (check AsyncStorage immediately)
-        const initialFilters = { ...filters, offset: 0 };
-        const { data: cachedData, isStale } = await launchAPI.getCachedUpcomingLaunches(initialFilters);
-        
-        if (cachedData) {
-            setData(cachedData.results);
-            setNext(cachedData.next);
-            setLoading(false);
-            // If data is fresh, we don't need to fetch
-            if (!isStale && !isRefresh) {
-                return; 
-            }
-            // If data is stale, we show it but continue to fetch in background
-        } else {
-            setLoading(true);
-        }
+      const initialFilters = { ...filters, offset: 0 };
+      const cached = kind === 'upcoming'
+        ? await launchAPI.getCachedUpcomingLaunches(initialFilters)
+        : await launchAPI.getCachedPastLaunches(initialFilters);
+      if (cached.data) {
+        setData(cached.data.results);
+        setNext(cached.data.next);
+        if (cached.fetchedAt) setUpdatedAt(cached.fetchedAt);
+        setLoading(false);
+        if (!cached.isStale && !isRefresh) return;
+      } else {
+        setLoading(true);
+      }
     }
-    
+
     setError(null);
 
     try {
       const fetchFilters = { ...filters };
-      if (isLoadMore && next) {
-          fetchFilters.offset = data.length;
-      } else if (isRefresh) {
-          fetchFilters.offset = 0;
+      if (isLoadMore) {
+        fetchFilters.offset = dataLength.current;
+      } else {
+        fetchFilters.offset = 0;
       }
-
-      const response = await launchAPI.getUpcomingLaunches(fetchFilters, !isRefresh);
-      
+      const response = kind === 'upcoming'
+        ? await launchAPI.getUpcomingLaunches(fetchFilters, !isRefresh)
+        : await launchAPI.getPastLaunches(fetchFilters, !isRefresh);
       if (isRefresh || !isLoadMore) {
         setData(response.results);
+        setUpdatedAt(Date.now());
       } else {
-        setData(prev => [...prev, ...response.results]);
+        setData((prev) => [...prev, ...response.results]);
       }
-      
       setNext(response.next);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch launches');
+      const message = err.message || 'Failed to fetch launches';
+      if (isLoadMore) setLoadMoreError(message);
+      else setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
     }
-  }, [JSON.stringify(filters), next, data.length]);
+  }, [enabled, JSON.stringify(filters), kind]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    if (dataLength.current === 0) setLoading(true);
     fetchLaunches();
-  }, [JSON.stringify(filters)]);
+  }, [enabled, fetchLaunches]);
 
-  const refetch = () => fetchLaunches(true);
-  
   const loadMore = async () => {
-      if (next && !loading && !refreshing) {
-          await fetchLaunches(false, true);
-      }
+    if (!next || loading || refreshing || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    await fetchLaunches(false, true);
   };
 
-  return { data, loading, refreshing, error, refetch, hasMore: !!next, loadMore };
-};
-
-export const usePastLaunches = (
-    filters: LaunchFilters = {}
-  ): UseLaunchesResult => {
-    const [data, setData] = useState<Launch[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [next, setNext] = useState<string | undefined>(undefined);
-  
-    const fetchLaunches = useCallback(async (isRefresh = false, isLoadMore = false) => {
-      if (isRefresh) {
-          setRefreshing(true);
-      } else if (isLoadMore) {
-           // No loading for load more
-      } else {
-          // Try to load from cache first (check AsyncStorage immediately)
-          const initialFilters = { ...filters, offset: 0 };
-          const { data: cachedData, isStale } = await launchAPI.getCachedPastLaunches(initialFilters);
-          
-          if (cachedData) {
-              setData(cachedData.results);
-              setNext(cachedData.next);
-              setLoading(false);
-              // If data is fresh, we don't need to fetch
-              if (!isStale && !isRefresh) {
-                  return;
-              }
-              // If data is stale, we show it but continue to fetch in background
-          } else {
-              setLoading(true);
-          }
-      }
-      
-      setError(null);
-  
-      try {
-        const fetchFilters = { ...filters };
-        if (isLoadMore) {
-            fetchFilters.offset = data.length;
-        } else {
-            fetchFilters.offset = 0;
-        }
-  
-        const response = await launchAPI.getPastLaunches(fetchFilters, !isRefresh);
-        
-        if (isRefresh || !isLoadMore) {
-          setData(response.results);
-        } else {
-          setData(prev => [...prev, ...response.results]);
-        }
-        
-        setNext(response.next);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch launches');
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }, [JSON.stringify(filters), next, data.length]);
-  
-    useEffect(() => {
-      fetchLaunches();
-    }, [JSON.stringify(filters)]);
-  
-    const refetch = () => fetchLaunches(true);
-    
-    const loadMore = async () => {
-        if (next && !loading && !refreshing) {
-            await fetchLaunches(false, true);
-        }
-    };
-  
-    return { data, loading, refreshing, error, refetch, hasMore: !!next, loadMore };
+  return {
+    data,
+    loading,
+    refreshing,
+    loadingMore,
+    error,
+    loadMoreError,
+    updatedAt,
+    refetch: () => fetchLaunches(true),
+    hasMore: !!next,
+    loadMore,
   };
+}
+
+export const useUpcomingLaunches = (filters: LaunchFilters = {}, enabled = true) =>
+  useLaunchList('upcoming', filters, enabled);
+
+export const usePastLaunches = (filters: LaunchFilters = {}, enabled = true) =>
+  useLaunchList('past', filters, enabled);

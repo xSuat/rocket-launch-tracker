@@ -6,30 +6,44 @@ import { AppProvider } from './context/AppContext';
 import { AppNavigator } from './navigation/AppNavigator';
 import { SkyBackground } from './components/sky/SkyBackground';
 import { ToastProvider } from './components/ui/Toast';
+import { openLaunch } from './navigation/navigationRef';
+
+function launchIdFromResponse(response: Notifications.NotificationResponse | null | undefined) {
+  const id = response?.notification.request.content.data?.launchId;
+  return typeof id === 'string' ? id : null;
+}
 
 export default function App() {
   const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
   const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
   useEffect(() => {
-    // Handle notifications received while app is foregrounded
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('Notification received:', notification);
+    notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const launchId = launchIdFromResponse(response);
+      if (launchId) openLaunch(launchId);
     });
 
-    // Handle user tapping on notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log('Notification response:', response);
-      // Could navigate to launch details here if needed
-    });
+    let cancelled = false;
+    let coldStartTimer: ReturnType<typeof setInterval> | undefined;
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      const launchId = launchIdFromResponse(response);
+      if (!launchId || cancelled) return;
+      let tries = 0;
+      coldStartTimer = setInterval(() => {
+        tries += 1;
+        if (openLaunch(launchId) || tries > 12) {
+          if (coldStartTimer) clearInterval(coldStartTimer);
+        }
+      }, 250);
+    }).catch(() => {});
 
     return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
+      cancelled = true;
+      if (coldStartTimer) clearInterval(coldStartTimer);
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
     };
   }, []);
 
@@ -52,4 +66,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
 });
-

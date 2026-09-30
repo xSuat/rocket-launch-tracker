@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, Easing, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 import { useReduceMotion } from '../../hooks/useReduceMotion';
 import { createStarfield, Star } from './stars';
 
@@ -113,14 +113,11 @@ export const SkyBackground: React.FC = () => {
         <Circle cx={moonX - 4} cy={moonY + 3} r={2.5} fill="#D0D0D0" />
         <Circle cx={moonX - 7} cy={moonY - 1} r={1.6} fill="#D0D0D0" />
         <Circle cx={moonX + 1} cy={moonY + 6} r={2} fill="#D0D0D0" />
-        <Circle
-          cx={moonX + 6}
-          cy={moonY - 6}
-          r={MOON_R}
-          fill="none"
+        <Path
+          d={`M ${moonX + 6} ${moonY - 14} A 14 14 0 0 1 ${moonX + 14} ${moonY + 2}`}
           stroke="#FFFFFF"
           strokeWidth={2}
-          strokeDasharray={`${MOON_R * 1.2} ${MOON_R * 6}`}
+          fill="none"
         />
       </Svg>
       {liveStars.map((star, index) => (

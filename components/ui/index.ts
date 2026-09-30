@@ -10,8 +10,3 @@ export { Sheet } from './Sheet';
 export { Skeleton } from './Skeleton';
 export { StatusBadge } from './StatusBadge';
 export { ToastProvider, useToast } from './Toast';
-export { GlassCard } from './GlassCard';
-export { GradientButton } from './GradientButton';
-export { StatCard } from './StatCard';
-export { PageHeader } from './PageHeader';
-export { SearchFilterBar } from './SearchFilterBar';

@@ -1,378 +1,208 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { color, space, type } from '../constants/theme';
+import { Sheet } from './ui/Sheet';
+import { Button } from './ui/Button';
 import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  TextInput,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import { scheduleReminder, cancelReminder, hasReminder } from '../lib/notify';
-import { GlassCard, GradientButton } from './ui';
-import { Colors } from '../constants/colors';
+  formatDateTime,
+  formatDuration,
+  isHourConfirmed,
+  NetPrecision,
+} from '../utils/dateUtils';
+import { cancelReminder, hasReminder, scheduleReminder } from '../lib/notify';
+import { hapticSuccess } from '../utils/haptics';
+import { useToast } from './ui/Toast';
+
+const PRESETS = [30, 60, 1440];
 
 interface ReminderModalProps {
   visible: boolean;
-  onClose: () => void;
   launchId: string;
   launchName: string;
   launchDate: string;
+  precision?: NetPrecision | null;
+  onClose: () => void;
 }
-
-const PRESETS = [
-  { label: '30 minutes', minutes: 30 },
-  { label: '1 hour', minutes: 60 },
-  { label: '1 day', minutes: 24 * 60 },
-];
 
 export const ReminderModal: React.FC<ReminderModalProps> = ({
   visible,
-  onClose,
   launchId,
   launchName,
   launchDate,
+  precision,
+  onClose,
 }) => {
-  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
-  const [customMinutes, setCustomMinutes] = useState('');
-  const [isCustom, setIsCustom] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [hasExistingReminder, setHasExistingReminder] = useState(false);
+  const { showToast } = useToast();
+  const [selected, setSelected] = useState(60);
+  const [custom, setCustom] = useState('');
+  const [useCustom, setUseCustom] = useState(false);
+  const [existing, setExisting] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => {
-    if (visible) {
-      checkExistingReminder();
-    }
+  useEffect(() => {
+    if (!visible) return;
+    setUseCustom(false);
+    setCustom('');
+    setSelected(60);
+    hasReminder(launchId).then(setExisting).catch(() => setExisting(false));
   }, [visible, launchId]);
 
-  const checkExistingReminder = async () => {
-    const exists = await hasReminder(launchId);
-    setHasExistingReminder(exists);
-  };
+  const launchMs = new Date(launchDate).getTime();
+  const minutes = useCustom ? Number(custom) : selected;
+  const validCustom = !useCustom || (Number.isFinite(minutes) && minutes > 0 && Number.isInteger(minutes));
+  const fireAt = launchMs - minutes * 60000;
+  const tooLate = !validCustom || fireAt <= Date.now();
+  const when = formatDateTime(launchDate, precision);
+  const confirmed = isHourConfirmed(precision);
 
-  const handleSetReminder = async () => {
-    if (loading) return;
+  const summary = useMemo(() => {
+    if (!validCustom) return 'Enter a whole number of minutes.';
+    if (tooLate) return 'That reminder time has already passed.';
+    const line = `We'll remind you ${formatDuration(minutes)} before · ${when}`;
+    return confirmed ? line : `${line}. The launch time isn't confirmed yet.`;
+  }, [confirmed, minutes, tooLate, validCustom, when]);
 
-    let minutes: number;
-    if (isCustom) {
-      const parsed = parseInt(customMinutes, 10);
-      if (isNaN(parsed) || parsed <= 0) {
-        Alert.alert('Invalid Time', 'Please enter a valid number of minutes.');
-        return;
-      }
-      minutes = parsed;
-    } else if (selectedPreset === null) {
-      Alert.alert('Select Time', 'Please select a reminder time.');
-      return;
-    } else {
-      minutes = PRESETS[selectedPreset].minutes;
-    }
-
+  const save = async () => {
+    if (tooLate || !validCustom) return;
+    setBusy(true);
     try {
-      setLoading(true);
-      
-      // Cancel existing reminder if any
-      if (hasExistingReminder) {
-        await cancelReminder(launchId);
-      }
-
       await scheduleReminder(launchId, launchName, launchDate, minutes);
-      Alert.alert('Reminder Set', `You'll be notified ${minutes} minute${minutes !== 1 ? 's' : ''} before the launch.`);
+      hapticSuccess();
+      showToast(`Reminder set for ${formatDuration(minutes)} before`);
       onClose();
-      resetForm();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to set reminder. Please try again.');
+      const denied = String(error?.message || '').toLowerCase().includes('permission');
+      Alert.alert(
+        denied ? 'Notifications are off' : 'Could not set reminder',
+        denied
+          ? 'Turn on notifications for Rocket Launch Tracker in Settings to get a reminder.'
+          : 'Please try again.'
+      );
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  const handleCancelReminder = async () => {
+  const remove = async () => {
+    setBusy(true);
     try {
-      setLoading(true);
       await cancelReminder(launchId);
-      Alert.alert('Reminder Cancelled', 'Your reminder has been cancelled.');
-      setHasExistingReminder(false);
+      showToast('Reminder canceled');
       onClose();
-      resetForm();
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to cancel reminder.');
+    } catch {
+      Alert.alert('Could not cancel reminder', 'Please try again.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
-
-  const resetForm = () => {
-    setSelectedPreset(null);
-    setCustomMinutes('');
-    setIsCustom(false);
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <LinearGradient
-        colors={['rgba(15, 23, 42, 0.95)', 'rgba(30, 27, 75, 0.95)']}
-        style={styles.overlay}
+    <Sheet visible={visible} title="Remind me" onClose={onClose}>
+      <Text style={styles.when}>{when}</Text>
+      {!confirmed ? <Text style={styles.warn}>The launch time isn't confirmed yet.</Text> : null}
+      {PRESETS.map((preset) => {
+        const late = launchMs - preset * 60000 <= Date.now();
+        const on = !useCustom && selected === preset;
+        return (
+          <Pressable
+            key={preset}
+            accessibilityRole="radio"
+            accessibilityLabel={formatDuration(preset)}
+            accessibilityState={{ selected: on, disabled: late }}
+            disabled={late}
+            onPress={() => {
+              setUseCustom(false);
+              setSelected(preset);
+            }}
+            style={({ pressed }) => [styles.preset, on && styles.presetOn, pressed && styles.pressed]}
+          >
+            <Text style={[styles.presetLabel, late && styles.disabled]}>{formatDuration(preset)}</Text>
+            <Text style={[styles.presetMeta, late && styles.disabled]}>{late ? 'Too late' : on ? 'Selected' : ''}</Text>
+          </Pressable>
+        );
+      })}
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityLabel="Custom minutes"
+        accessibilityState={{ selected: useCustom }}
+        onPress={() => setUseCustom(true)}
+        style={[styles.preset, useCustom && styles.presetOn]}
       >
-        <View style={styles.modalContainer}>
-          <GlassCard style={styles.modal}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Set Reminder</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <MaterialIcons name="close" size={24} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-          <View style={styles.content}>
-            <Text style={styles.launchName}>{launchName}</Text>
-            <Text style={styles.launchDate}>{new Date(launchDate).toLocaleString()}</Text>
-
-            {hasExistingReminder && (
-              <GlassCard style={styles.existingReminder}>
-                <MaterialIcons name="info" size={20} color={Colors.primary} />
-                <Text style={styles.existingReminderText}>
-                  You already have a reminder set for this launch.
-                </Text>
-              </GlassCard>
-            )}
-
-            {!isCustom ? (
-              <>
-                <Text style={styles.label}>Select reminder time:</Text>
-                <View style={styles.presetsContainer}>
-                  {PRESETS.map((preset, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.presetButton,
-                        selectedPreset === index && styles.presetButtonActive,
-                      ]}
-                      onPress={() => setSelectedPreset(index)}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialIcons
-                        name={selectedPreset === index ? 'check-circle' : 'radio-button-unchecked'}
-                        size={24}
-                        color={selectedPreset === index ? Colors.primary : Colors.textMuted}
-                      />
-                      <Text
-                        style={[
-                          styles.presetText,
-                          selectedPreset === index && styles.presetTextActive,
-                        ]}
-                      >
-                        {preset.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TouchableOpacity
-                  style={styles.customButton}
-                  onPress={() => setIsCustom(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.customButtonText}>Custom time</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.label}>Enter minutes before launch:</Text>
-                <GlassCard style={styles.inputCard}>
-                  <TextInput
-                    style={styles.input}
-                    value={customMinutes}
-                    onChangeText={setCustomMinutes}
-                    placeholder="e.g., 120"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="numeric"
-                    autoFocus
-                  />
-                </GlassCard>
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={() => {
-                    setIsCustom(false);
-                    setCustomMinutes('');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.backButtonText}>Back to presets</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-            <View style={styles.footer}>
-              {hasExistingReminder && (
-                <TouchableOpacity
-                  style={styles.cancelReminderButton}
-                  onPress={handleCancelReminder}
-                  disabled={loading}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.cancelReminderButtonText}>Cancel Reminder</Text>
-                </TouchableOpacity>
-              )}
-              <GradientButton
-                title={loading ? 'Setting...' : hasExistingReminder ? 'Update Reminder' : 'Set Reminder'}
-                onPress={handleSetReminder}
-                disabled={loading}
-                style={styles.setButton}
-              />
-            </View>
-          </GlassCard>
-        </View>
-      </LinearGradient>
-    </Modal>
+        <Text style={styles.presetLabel}>Custom</Text>
+        <TextInput
+          value={custom}
+          onChangeText={(value) => {
+            setCustom(value.replace(/[^0-9]/g, ''));
+            setUseCustom(true);
+          }}
+          keyboardType="number-pad"
+          placeholder="Minutes"
+          placeholderTextColor={color.textTertiary}
+          accessibilityLabel="Custom minutes before launch"
+          style={styles.input}
+        />
+      </Pressable>
+      <Text style={styles.summary}>{summary}</Text>
+      <Button label="Set reminder" onPress={save} disabled={tooLate || !validCustom} loading={busy} />
+      {existing ? (
+        <Button label="Cancel reminder" variant="secondary" onPress={remove} disabled={busy} style={styles.cancel} />
+      ) : null}
+    </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
+  when: {
+    ...type.subhead,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+    marginBottom: space.s12,
   },
-  modalContainer: {
-    maxHeight: '90%',
-    width: '100%',
+  warn: {
+    ...type.footnote,
+    color: color.textSecondary,
+    marginBottom: space.s12,
   },
-  modal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 0,
-    maxHeight: '100%',
-  },
-  header: {
+  preset: {
+    minHeight: 44,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.hairline,
+    paddingVertical: space.s8,
   },
-  title: {
-    color: Colors.text,
-    fontSize: 20,
-    fontWeight: '700',
+  presetOn: {
+    backgroundColor: color.bgMuted,
   },
-  closeButton: {
-    padding: 4,
+  pressed: {
+    backgroundColor: color.bgMuted,
   },
-  content: {
-    padding: 20,
+  presetLabel: {
+    ...type.body,
+    color: color.text,
   },
-  launchName: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
+  presetMeta: {
+    ...type.footnote,
+    color: color.textTertiary,
   },
-  launchDate: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  existingReminder: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    marginBottom: 20,
-    gap: 12,
-  },
-  existingReminderText: {
-    color: Colors.primary,
-    fontSize: 14,
-    flex: 1,
-    fontWeight: '600',
-  },
-  label: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  presetsContainer: {
-    gap: 12,
-    marginBottom: 12,
-  },
-  presetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.card,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-  },
-  presetButtonActive: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(168, 85, 247, 0.2)',
-  },
-  presetText: {
-    color: Colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  presetTextActive: {
-    color: Colors.text,
-    fontWeight: '600',
-  },
-  customButton: {
-    padding: 12,
-    alignItems: 'center',
-  },
-  customButtonText: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  inputCard: {
-    padding: 0,
-    marginBottom: 12,
+  disabled: {
+    color: color.textDisabled,
   },
   input: {
-    padding: 16,
-    color: Colors.text,
-    fontSize: 15,
+    minWidth: 96,
+    minHeight: 44,
+    color: color.text,
+    textAlign: 'right',
+    ...type.body,
+    fontVariant: ['tabular-nums'],
   },
-  backButton: {
-    padding: 12,
-    alignItems: 'center',
+  summary: {
+    ...type.footnote,
+    color: color.textSecondary,
+    marginVertical: space.s16,
   },
-  backButtonText: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  footer: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    gap: 12,
-  },
-  cancelReminderButton: {
-    padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cancelReminderButtonText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  setButton: {
-    flex: 1,
+  cancel: {
+    marginTop: space.s8,
   },
 });
-
