@@ -64,14 +64,17 @@ rocket-launch-tracker/
 
 ## API
 
-The app uses the Launch Library 2 API:
-- Base URL: `https://ll.thespacedevs.com/2.3.0`
-- Endpoint: `/launch/`
+The app uses Launch Library 2:
+
+- Development: `https://lldev.thespacedevs.com/2.3.0` (`EXPO_PUBLIC_LL2_ENV=dev`)
+- Production: `https://ll.thespacedevs.com/2.3.0` (`EXPO_PUBLIC_LL2_ENV=prod`)
+
+See [ENV_SETUP.md](./ENV_SETUP.md).
 
 ## Notes
 
-- The app includes automatic caching (5 minutes) for offline support
-- Favorites are stored locally using AsyncStorage
-- All launch times are automatically converted to the user's timezone
-- The app supports both light and dark mode (follows system settings)
+- Launch responses are cached for 10 minutes and can be shown for up to 24 hours when the service is rate-limited or unreachable
+- Favorites and reminders are stored on the device with AsyncStorage
+- The interface is dark
+- Store builds and the release checklist are in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md)
 

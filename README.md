@@ -1,17 +1,17 @@
 # Rocket Launch Tracker
 
-A modern, minimalist mobile app for tracking rocket launches, space events, and astronomical phenomena globally. Built with React Native, Expo, and TypeScript.
+A mobile app for tracking rocket launches and sky events. Built with React Native, Expo, and TypeScript. The interface is dark.
+
+Publishing to the App Store: [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md).
 
 ## Features
 
-- **Upcoming Launches** - Browse upcoming rocket launches with live countdown timers
-- **Space Events Calendar** - View launches, asteroid close approaches, ISS passes, meteor showers, moon phases, and NASA's Astronomy Picture of the Day
-- **Search & Filter** - Search launches and filter by rocket, agency, location, orbit, and more
-- **Favorites** - Save your favorite launches for quick access
-- **Offline Support** - Cached data works offline with automatic refresh
-- **ISS Tracking** - Get ISS pass predictions for your location
-- **Modern UI** - Beautiful, minimalist interface with dark mode support
-- **Detailed Information** - Comprehensive launch details, rocket specifications, mission timelines, and more
+- **Upcoming and past launches** - Browse rocket launches with countdown timers on upcoming flights
+- **Favorites** - Save launches on this device
+- **Reminders** - Local notifications for a launch you choose (not remote push)
+- **Space events calendar** - Launches, asteroid close approaches, meteor showers, moon phases, and NASA's Astronomy Picture of the Day
+- **Calendar** - Add a launch or sky event to the device calendar when you tap Add to Calendar
+- **Offline cache** - Previously loaded lists are kept on device and reused when the launch service is busy or unreachable
 
 ## Getting Started
 
@@ -74,20 +74,20 @@ The app uses NASA's APIs for asteroid data and Astronomy Picture of the Day. Whi
 
 ### Launch Library 2 Environment
 
-- `EXPO_PUBLIC_LL2_ENV=dev` - Uses development API (no key required, lower rate limits)
-- `EXPO_PUBLIC_LL2_ENV=prod` - Uses production API (may require API key for higher limits)
+- `EXPO_PUBLIC_LL2_ENV=dev` - Development API (`lldev.thespacedevs.com`). Use this for local work so you do not spend the production quota.
+- `EXPO_PUBLIC_LL2_ENV=prod` - Production API (`ll.thespacedevs.com`). The free tier is about 15 requests per hour per IP. Store and preview builds set this in `eas.json`.
 
-**Note**: The app works without any API keys using demo keys, but rate limits are lower.
+If the variable is unset, debug builds use `dev` and release builds use `prod`. Empty or placeholder NASA keys are ignored and the app falls back to `DEMO_KEY`.
+
+**Note**: The app works without any API keys. NASA's demo key and the Launch Library free tier are both rate-limited.
 
 See [ENV_SETUP.md](./ENV_SETUP.md) for detailed setup instructions.
 
 ## APIs Used
 
-- **Launch Library 2** - Rocket launch data ([ll.thespacedevs.com](https://ll.thespacedevs.com))
+- **Launch Library 2** (The Space Devs) - Rocket launch data ([ll.thespacedevs.com](https://ll.thespacedevs.com))
 - **NASA NeoWs** - Near Earth Object data ([api.nasa.gov](https://api.nasa.gov))
 - **NASA APOD** - Astronomy Picture of the Day ([api.nasa.gov](https://api.nasa.gov))
-- **ISS API** - International Space Station pass predictions ([open-notify.org](https://open-notify.org))
-- **SpaceX API** - Additional SpaceX rocket data ([api.spacexdata.com](https://api.spacexdata.com))
 
 ## Project Structure
 
@@ -128,16 +128,14 @@ rocket-launch-tracker/
 ## Features in Detail
 
 ### Launch Tracking
-- Real-time countdown timers
-- Detailed launch information (rocket, mission, location, timeline)
-- Historical launch archive
-- Search and advanced filtering
-- Share functionality
+- Countdown timers for upcoming launches
+- Launch details (rocket, mission, pad)
+- Past launches
+- Favorites stored on device
 
 ### Space Events Calendar
 - Rocket launches
 - Asteroid close approaches (with hazard indicators)
-- ISS pass predictions (location-based)
 - Meteor shower information
 - Moon phase events
 - NASA Astronomy Picture of the Day
@@ -164,14 +162,14 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- [Launch Library 2](https://ll.thespacedevs.com) - Launch data API
-- [NASA APIs](https://api.nasa.gov) - Space data and imagery
-- [Open Notify](https://open-notify.org) - ISS tracking API
-- [SpaceX API](https://api.spacexdata.com) - SpaceX rocket data
+- [Launch Library 2](https://ll.thespacedevs.com) by The Space Devs - Launch data API
+- [NASA APIs](https://api.nasa.gov) - Asteroid data and Astronomy Picture of the Day
+
+This project is not affiliated with NASA or any launch provider.
 
 ## Support
 
-For issues, questions, or contributions, please open an issue on GitHub.
+For issues, questions, or contributions, please open an issue on GitHub. The public support page is [docs/support.html](./docs/support.html), and the privacy policy is [docs/privacy-policy.html](./docs/privacy-policy.html).
 
 ---
 
